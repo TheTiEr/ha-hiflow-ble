@@ -1,0 +1,108 @@
+"""HiFlow BLE Home Assistant integration."""
+
+from __future__ import annotations
+
+import logging
+from datetime import timedelta
+
+from homeassistant.components import bluetooth
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
+
+from hiflow_ble.hiflow import HiFlow
+
+from .const import (
+    CONF_ADDRESS,
+    CONF_ENC_RAND,
+    CONF_SN,
+    CONF_TIMEOUT,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_APP_INFO_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_CONFIG_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_UPDATE_INTERVAL_SECONDS,
+    DOMAIN,
+    HASS_APP_INFO_COORDINATOR,
+    HASS_CONFIG_COORDINATOR,
+    HASS_DATA_COORDINATOR,
+    HASS_HIFLOW,
+)
+from .coordinator import (
+    HiFlowAppInfoUpdateCoordinator,
+    HiFlowConfigUpdateCoordinator,
+    HiFlowRealDataUpdateCoordinator,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+PLATFORMS = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.NUMBER,
+]
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up HiFlow BLE from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+
+    address: str = entry.data[CONF_ADDRESS]
+    enc_rand_hex: str = entry.data[CONF_ENC_RAND]
+    sn: str = entry.data[CONF_SN]
+    timeout = entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS)
+    update_interval = timedelta(
+        seconds=entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_SECONDS)
+    )
+
+    ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+    target = ble_device if ble_device is not None else address
+
+    hiflow = HiFlow(target, enc_rand=bytes.fromhex(enc_rand_hex), sn=sn, timeout=timeout)
+    try:
+        await hiflow.connect()
+    except Exception as err:
+        _LOGGER.warning("HiFlow initial connect failed for %s: %s", address, err)
+        # Don't bail — the coordinator's _ensure_connected will retry.
+
+    data_coordinator = HiFlowRealDataUpdateCoordinator(
+        hass, hiflow, entry, update_interval
+    )
+    config_coordinator = HiFlowConfigUpdateCoordinator(
+        hass, hiflow, entry, timedelta(seconds=DEFAULT_CONFIG_UPDATE_INTERVAL_SECONDS)
+    )
+    app_info_coordinator = HiFlowAppInfoUpdateCoordinator(
+        hass, hiflow, entry, timedelta(seconds=DEFAULT_APP_INFO_UPDATE_INTERVAL_SECONDS)
+    )
+
+    hass.data[DOMAIN][entry.entry_id] = {
+        HASS_HIFLOW: hiflow,
+        HASS_DATA_COORDINATOR: data_coordinator,
+        HASS_CONFIG_COORDINATOR: config_coordinator,
+        HASS_APP_INFO_COORDINATOR: app_info_coordinator,
+    }
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await data_coordinator.async_config_entry_first_refresh()
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Tear down the entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        stash = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if stash and (hiflow := stash.get(HASS_HIFLOW)):
+            try:
+                await hiflow.disconnect()
+            except Exception as err:
+                _LOGGER.debug("disconnect() on unload failed: %s", err)
+    return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry
+) -> bool:
+    """Allow removing the device entry from the UI."""
+    return True

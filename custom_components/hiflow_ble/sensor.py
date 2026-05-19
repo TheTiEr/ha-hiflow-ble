@@ -1,0 +1,369 @@
+"""Sensor entities for the HiFlow BLE integration.
+
+Mirrors the dataclass-based description pattern used by ``ha-hoymiles-wifi``.
+Scoped to single-phase inverters (no TGS, no built-in meter, no battery).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import logging
+import re
+from dataclasses import dataclass
+from datetime import datetime, time, timedelta
+
+from homeassistant.components.sensor import (
+    RestoreSensor,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfFrequency,
+    UnitOfPower,
+    UnitOfReactivePower,
+    UnitOfTemperature,
+)
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import (
+    CONF_DTU_SERIAL_NUMBER,
+    CONF_INVERTERS,
+    CONF_PORTS,
+    DOMAIN,
+    HASS_DATA_COORDINATOR,
+)
+from .coordinator import HiFlowDataUpdateCoordinator
+from .entity import HiFlowCoordinatorEntity, HiFlowEntityDescription
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class HiFlowSensorEntityDescription(HiFlowEntityDescription, SensorEntityDescription):
+    """Sensor description with HiFlow-specific fields."""
+
+    conversion_factor: float | None = None
+    reset_at_midnight: bool = False
+    assume_state: bool = False
+    force_keep_maximum_within_day: bool = False
+
+
+HIFLOW_SENSORS: tuple[HiFlowSensorEntityDescription, ...] = (
+    # ----- DTU (gateway / inverter aggregator) -----
+    HiFlowSensorEntityDescription(
+        key="dtu_power",
+        translation_key="ac_active_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+        is_dtu_sensor=True,
+    ),
+    HiFlowSensorEntityDescription(
+        key="dtu_daily_energy",
+        translation_key="ac_daily_energy",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        reset_at_midnight=True,
+        force_keep_maximum_within_day=True,
+        is_dtu_sensor=True,
+    ),
+    # ----- Per-inverter AC side (SGS = single grid string) -----
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].active_power",
+        translation_key="ac_active_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].reactive_power",
+        translation_key="ac_reactive_power",
+        native_unit_of_measurement=UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+        device_class=SensorDeviceClass.REACTIVE_POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].voltage",
+        translation_key="grid_voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].current",
+        translation_key="ac_current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.01,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].frequency",
+        translation_key="grid_frequency",
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.01,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].power_factor",
+        translation_key="inverter_power_factor",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].temperature",
+        translation_key="inverter_temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="sgs_data[<inverter_count>].warning_number",
+        translation_key="inverter_warning_number",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # ----- Per-PV-port DC side -----
+    HiFlowSensorEntityDescription(
+        key="pv_data[<pv_count>].voltage",
+        translation_key="port_dc_voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="pv_data[<pv_count>].current",
+        translation_key="port_dc_current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.01,
+    ),
+    HiFlowSensorEntityDescription(
+        key="pv_data[<pv_count>].power",
+        translation_key="port_dc_power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        conversion_factor=0.1,
+    ),
+    HiFlowSensorEntityDescription(
+        key="pv_data[<pv_count>].energy_total",
+        translation_key="port_dc_total_energy",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    HiFlowSensorEntityDescription(
+        key="pv_data[<pv_count>].energy_daily",
+        translation_key="port_dc_daily_energy",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        reset_at_midnight=True,
+    ),
+    HiFlowSensorEntityDescription(
+        key="pv_data[<pv_count>].error_code",
+        translation_key="port_error_code",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Wire up sensors for a single HiFlow Pro config entry."""
+    stash = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator: HiFlowDataUpdateCoordinator = stash[HASS_DATA_COORDINATOR]
+
+    dtu_sn: str = config_entry.data[CONF_DTU_SERIAL_NUMBER]
+    inverters: list[str] = list(config_entry.data.get(CONF_INVERTERS, []))
+    ports: list[dict] = list(config_entry.data.get(CONF_PORTS, []))
+
+    entities: list[SensorEntity] = []
+    for desc in HIFLOW_SENSORS:
+        if "<inverter_count>" in desc.key:
+            for idx, inverter_sn in enumerate(inverters):
+                new_key = desc.key.replace("<inverter_count>", str(idx))
+                entities.append(
+                    HiFlowDataSensorEntity(
+                        config_entry,
+                        dataclasses.replace(desc, key=new_key, serial_number=inverter_sn),
+                        coordinator,
+                    )
+                )
+        elif "<pv_count>" in desc.key:
+            for idx, port in enumerate(ports):
+                new_key = desc.key.replace("<pv_count>", str(idx))
+                updated = dataclasses.replace(
+                    desc,
+                    key=new_key,
+                    serial_number=port["inverter_serial_number"],
+                    port_number=port["port_number"],
+                )
+                cls = (
+                    HiFlowEnergySensorEntity
+                    if updated.state_class == SensorStateClass.TOTAL_INCREASING
+                    else HiFlowDataSensorEntity
+                )
+                entities.append(cls(config_entry, updated, coordinator))
+        else:
+            updated = dataclasses.replace(desc, serial_number=dtu_sn)
+            cls = (
+                HiFlowEnergySensorEntity
+                if updated.state_class == SensorStateClass.TOTAL_INCREASING
+                else HiFlowDataSensorEntity
+            )
+            entities.append(cls(config_entry, updated, coordinator))
+
+    async_add_entities(entities)
+
+
+# ---------- helpers ----------
+
+def _resolve_path(obj, path: str):
+    """Walk ``obj`` along ``path`` (e.g. ``sgs_data[0].active_power``)."""
+    tokens = re.findall(r"\w+|\[\d+\]", path)
+    for token in tokens:
+        if obj is None:
+            return None
+        if token.startswith("["):
+            try:
+                obj = obj[int(token[1:-1])]
+            except (IndexError, TypeError):
+                return None
+        else:
+            obj = getattr(obj, token, None)
+    return obj
+
+
+# ---------- entity classes ----------
+
+class HiFlowDataSensorEntity(HiFlowCoordinatorEntity, RestoreSensor):
+    """Default sensor: pulls a numeric value from coordinator.data and scales it."""
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        description: HiFlowSensorEntityDescription,
+        coordinator: HiFlowDataUpdateCoordinator,
+    ) -> None:
+        super().__init__(config_entry, description, coordinator)
+        self._attribute_name = description.key
+        self._conversion_factor = description.conversion_factor
+        self._native_value = None
+        self._assumed_state = False
+        self._last_known_value = None
+        self._last_successful_update: datetime | None = None
+        self._last_update_state: datetime | None = None
+        self.update_state_value()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.update_state_value()
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self):
+        if self._native_value == 0.0:
+            if self.entity_description.assume_state:
+                return self._last_known_value
+            if (
+                self._last_successful_update is not None
+                and datetime.now() - self._last_successful_update <= timedelta(minutes=3)
+            ):
+                self._assumed_state = True
+                return self._last_known_value
+        else:
+            self._last_successful_update = datetime.now()
+            self._last_known_value = self._native_value
+        self._assumed_state = False
+        return self._native_value
+
+    @property
+    def assumed_state(self):
+        return self._assumed_state
+
+    def update_state_value(self) -> None:
+        if (
+            self.coordinator is None
+            or not hasattr(self.coordinator, "data")
+            or self.coordinator.data is None
+        ):
+            self._native_value = 0.0
+            return
+        new_value = _resolve_path(self.coordinator.data, self._attribute_name)
+        if new_value is not None and self._conversion_factor is not None:
+            new_value *= self._conversion_factor
+        if (
+            self.entity_description.force_keep_maximum_within_day
+            and self._last_update_state is not None
+            and self._last_update_state.date() == datetime.now().date()
+            and new_value is not None
+            and self._native_value is not None
+        ):
+            new_value = max(new_value, self._native_value)
+        self._last_update_state = datetime.now()
+        self._native_value = new_value
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        state = await self.async_get_last_sensor_data()
+        if state:
+            self._last_known_value = state.native_value
+
+
+class HiFlowEnergySensorEntity(HiFlowDataSensorEntity, RestoreSensor):
+    """Energy sensor: avoids resetting total_increasing on transient 0 values."""
+
+    def __init__(self, config_entry, description, coordinator) -> None:
+        super().__init__(config_entry, description, coordinator)
+        self._last_known_value = None  # don't pre-seed for long-term stats
+
+    def schedule_midnight_reset(self, reset_sensor_value: bool = True) -> None:
+        now = datetime.now()
+        midnight = datetime.combine(now.date(), time(0, 0))
+        midnight = midnight + timedelta(days=1) if now > midnight else midnight
+        time_until = (midnight - datetime.now()).total_seconds()
+        if reset_sensor_value:
+            self._last_known_value = 0
+        self.hass.loop.call_later(time_until, self.schedule_midnight_reset)
+
+    @property
+    def native_value(self):
+        super_value = super().native_value
+        if super_value == 0.0:
+            self._assumed_state = True
+            return self._last_known_value
+        self._last_known_value = super_value
+        self._assumed_state = False
+        return super_value
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        state = await self.async_get_last_sensor_data()
+        if state:
+            self._last_known_value = state.native_value
+        if self.entity_description.reset_at_midnight:
+            self.schedule_midnight_reset(reset_sensor_value=False)

@@ -1,0 +1,61 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add HiFlow inverter",
+        "description": "Pick a discovered RMI-* device. Make sure the S-Miles app is not connected.",
+        "data": {
+          "address": "Bluetooth device"
+        }
+      },
+      "pair": {
+        "title": "Pair with {name}",
+        "description": "About to pair with {name} ({address}). Make sure the S-Miles app is fully closed — the inverter only accepts one Bluetooth connection at a time."
+      }
+    },
+    "error": {
+      "cannot_connect": "Bluetooth connection failed. Is the inverter in range?",
+      "pairing_failed": "Pairing handshake failed. Close the S-Miles app and try again.",
+      "no_devices": "No HiFlow devices discovered. Make sure Bluetooth is enabled and the inverter is in range."
+    },
+    "abort": {
+      "already_configured": "Already configured.",
+      "unsupported_device": "Not a HiFlow Pro device."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "dtu": { "name": "DTU connectivity" }
+    },
+    "number": {
+      "limit_power_mypower": { "name": "Power limit" }
+    },
+    "button": {
+      "restart": { "name": "Restart" },
+      "turn_on": { "name": "Turn on" },
+      "turn_off": { "name": "Turn off" }
+    },
+    "sensor": {
+      "ac_active_power": { "name": "AC power" },
+      "ac_reactive_power": { "name": "AC reactive power" },
+      "ac_current": { "name": "AC current" },
+      "ac_daily_energy": { "name": "AC daily energy" },
+      "grid_voltage": { "name": "Grid voltage" },
+      "grid_frequency": { "name": "Grid frequency" },
+      "inverter_power_factor": { "name": "Inverter power factor" },
+      "inverter_temperature": { "name": "Inverter temperature" },
+      "inverter_warning_number": { "name": "Inverter warning" },
+      "port_dc_voltage": { "name": "Port {port_number} DC voltage" },
+      "port_dc_current": { "name": "Port {port_number} DC current" },
+      "port_dc_power": { "name": "Port {port_number} DC power" },
+      "port_dc_total_energy": { "name": "Port {port_number} total energy" },
+      "port_dc_daily_energy": { "name": "Port {port_number} daily energy" },
+      "port_error_code": { "name": "Port {port_number} error code" }
+    }
+  },
+  "device": {
+    "dtu": { "name": "DTU" },
+    "inverter": { "name": "Inverter" }
+  }
+}

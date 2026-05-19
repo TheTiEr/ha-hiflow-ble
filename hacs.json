@@ -1,0 +1,6 @@
+{
+  "name": "HiFlow BLE",
+  "render_readme": true,
+  "iot_class": "local_push",
+  "homeassistant": "2025.6.0"
+}
