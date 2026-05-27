@@ -1,4 +1,7 @@
-"""Number entities (power-limit slider) for HiFlow BLE."""
+"""Number entities (power-limit slider) for HiFlow BLE.
+
+The power-limit entity belongs to the *Wechselrichter* (inverter) device.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_DTU_SERIAL_NUMBER,
+    CONF_INVERTERS,
     DOMAIN,
     HASS_CONFIG_COORDINATOR,
 )
@@ -44,7 +48,6 @@ NUMBERS: tuple[HiFlowNumberEntityDescription, ...] = (
         native_step=1,
         mode=NumberMode.SLIDER,
         conversion_factor=0.1,
-        is_dtu_sensor=True,
     ),
 )
 
@@ -57,13 +60,20 @@ async def async_setup_entry(
     """Set up the HiFlow number entities."""
     stash = hass.data[DOMAIN][entry.entry_id]
     coordinator: HiFlowDataUpdateCoordinator = stash[HASS_CONFIG_COORDINATOR]
-    dtu_sn: str = entry.data[CONF_DTU_SERIAL_NUMBER]
 
-    entities = []
-    for desc in NUMBERS:
-        if desc.is_dtu_sensor:
-            updated = dataclasses.replace(desc, serial_number=dtu_sn)
-            entities.append(HiFlowPowerLimitNumber(entry, updated, coordinator))
+    dtu_sn: str = entry.data[CONF_DTU_SERIAL_NUMBER]
+    inverters: list[str] = list(entry.data.get(CONF_INVERTERS, []))
+    # All entities live on the inverter device.
+    inverter_sn: str = inverters[0] if inverters else dtu_sn
+
+    entities = [
+        HiFlowPowerLimitNumber(
+            entry,
+            dataclasses.replace(desc, serial_number=inverter_sn),
+            coordinator,
+        )
+        for desc in NUMBERS
+    ]
     async_add_entities(entities)
 
 

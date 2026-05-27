@@ -1,4 +1,19 @@
 {
+  "options": {
+    "step": {
+      "init": {
+        "title": "HiFlow BLE Einstellungen",
+        "data": {
+          "update_interval": "Abfrageintervall (Sekunden)",
+          "timeout": "BLE-Anfrage-Timeout (Sekunden)"
+        },
+        "data_description": {
+          "update_interval": "Wie oft Home Assistant den Wechselrichter nach Leistungsdaten abfragt. Niedrigere Werte geben schnellere Aktualisierungen, beanspruchen aber die BLE-Verbindung stärker. Minimum: 5 s.",
+          "timeout": "Maximale Wartezeit auf eine BLE-Antwort, bevor die Anfrage als fehlgeschlagen gilt. Minimum: 5 s."
+        }
+      }
+    }
+  },
   "config": {
     "flow_title": "{name}",
     "step": {
@@ -29,7 +44,7 @@
   },
   "entity": {
     "binary_sensor": {
-      "dtu": { "name": "DTU-Verbindung" }
+      "ble_link": { "name": "BLE-Verbindung" }
     },
     "number": {
       "limit_power_mypower": { "name": "Leistungsbegrenzung" }
@@ -44,6 +59,7 @@
       "ac_reactive_power": { "name": "AC-Blindleistung" },
       "ac_current": { "name": "AC-Strom" },
       "ac_daily_energy": { "name": "AC-Tagesertrag" },
+      "inverter_total_energy": { "name": "Gesamtertrag" },
       "grid_voltage": { "name": "Netzspannung" },
       "grid_frequency": { "name": "Netzfrequenz" },
       "inverter_power_factor": { "name": "Leistungsfaktor" },
@@ -58,7 +74,6 @@
     }
   },
   "device": {
-    "dtu": { "name": "DTU" },
     "inverter": { "name": "Wechselrichter" }
   }
 }

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
@@ -10,26 +9,28 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from hiflow_ble.hoymiles import get_dtu_model_name, get_inverter_model_name
+from hiflow_ble.hoymiles import get_inverter_model_name
 
-from .const import CONF_DTU_SERIAL_NUMBER, DOMAIN
+from .const import DOMAIN
 from .coordinator import HiFlowDataUpdateCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class HiFlowEntityDescription(EntityDescription):
     """Base description with HiFlow-specific extras."""
 
-    is_dtu_sensor: bool = False
+    is_dtu_sensor: bool = False   # kept for API compatibility; no longer affects device routing
     serial_number: str | None = None
     port_number: int | None = None
     phase: str | None = None
 
 
 class HiFlowEntity(Entity):
-    """Common entity base — sets device-info, unique-id, translation placeholders."""
+    """Common entity base — sets device-info, unique-id, translation placeholders.
+
+    All entities are attached to the single *Wechselrichter* (inverter) device.
+    There is no separate DTU device.
+    """
 
     _attr_has_entity_name = True
 
@@ -48,26 +49,16 @@ class HiFlowEntity(Entity):
         if description.phase is not None:
             self._attr_translation_placeholders = {"phase": description.phase}
 
-        dtu_serial = config_entry.data[CONF_DTU_SERIAL_NUMBER]
-        serial = str(description.serial_number) if description.serial_number else dtu_serial
+        serial = str(description.serial_number) if description.serial_number else None
+        device_model = get_inverter_model_name(serial) if serial else "Unknown"
 
-        if description.is_dtu_sensor:
-            device_model = get_dtu_model_name(serial) if serial else "Unknown"
-            device_translation_key = "dtu"
-        else:
-            device_model = get_inverter_model_name(serial) if serial else "Unknown"
-            device_translation_key = "inverter"
-
-        device_info = DeviceInfo(
-            identifiers={(DOMAIN, serial)},
-            translation_key=device_translation_key,
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, serial or config_entry.entry_id)},
+            translation_key="inverter",
             manufacturer="Hoymiles",
-            serial_number=serial.upper(),
+            serial_number=serial.upper() if serial else None,
             model=device_model,
         )
-        if not description.is_dtu_sensor:
-            device_info["via_device"] = (DOMAIN, dtu_serial)
-        self._attr_device_info = device_info
 
 
 class HiFlowCoordinatorEntity(CoordinatorEntity, HiFlowEntity):

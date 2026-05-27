@@ -55,9 +55,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     sn: str = entry.data[CONF_SN]
     ble_id: str = entry.data.get(CONF_BLE_ID, "")
     pin: str = entry.data.get(CONF_BLE_PIN, "")
-    timeout = entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS)
+    # Options (set via gear icon) take priority over legacy data values.
+    timeout = entry.options.get(
+        CONF_TIMEOUT, entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS)
+    )
     update_interval = timedelta(
-        seconds=entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_SECONDS)
+        seconds=entry.options.get(
+            CONF_UPDATE_INTERVAL,
+            entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_SECONDS),
+        )
     )
 
     ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
@@ -99,7 +105,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await data_coordinator.async_config_entry_first_refresh()
+
+    # Reload the entry when the user saves new options (e.g. changed interval).
+    entry.async_on_unload(entry.add_update_listener(_async_reload_on_options_change))
+
     return True
+
+
+async def _async_reload_on_options_change(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Reload the config entry so new options (e.g. polling interval) take effect."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

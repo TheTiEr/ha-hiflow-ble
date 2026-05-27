@@ -1,4 +1,7 @@
-"""Binary sensors for the HiFlow BLE integration."""
+"""Binary sensors for the HiFlow BLE integration.
+
+The BLE-connectivity sensor belongs to the *Wechselrichter* (inverter) device.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from hiflow_ble.hoymiles import NetworkState
 
 from .const import (
     CONF_DTU_SERIAL_NUMBER,
+    CONF_INVERTERS,
     DOMAIN,
     HASS_DATA_COORDINATOR,
 )
@@ -36,10 +40,9 @@ class HiFlowBinarySensorEntityDescription(
 BINARY_SENSORS: tuple[HiFlowBinarySensorEntityDescription, ...] = (
     HiFlowBinarySensorEntityDescription(
         key="ble_link",
-        translation_key="dtu",
+        translation_key="ble_link",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
-        is_dtu_sensor=True,
     ),
 )
 
@@ -52,13 +55,19 @@ async def async_setup_entry(
     """Set up the HiFlow binary sensors."""
     stash = hass.data[DOMAIN][entry.entry_id]
     coordinator: HiFlowDataUpdateCoordinator = stash[HASS_DATA_COORDINATOR]
+
     dtu_sn: str = entry.data[CONF_DTU_SERIAL_NUMBER]
+    inverters: list[str] = list(entry.data.get(CONF_INVERTERS, []))
+    # All entities live on the inverter device.
+    inverter_sn: str = inverters[0] if inverters else dtu_sn
 
     entities = []
     for desc in BINARY_SENSORS:
         entities.append(
             HiFlowConnectivityBinarySensor(
-                entry, dataclasses.replace(desc, serial_number=dtu_sn), coordinator
+                entry,
+                dataclasses.replace(desc, serial_number=inverter_sn),
+                coordinator,
             )
         )
     async_add_entities(entities)

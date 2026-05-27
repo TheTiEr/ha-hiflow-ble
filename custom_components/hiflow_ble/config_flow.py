@@ -11,7 +11,7 @@ from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
 )
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 
 from .const import (
     CONF_ADDRESS,
@@ -28,6 +28,8 @@ from .const import (
     CONFIG_VERSION,
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_UPDATE_INTERVAL_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    MIN_UPDATE_INTERVAL_SECONDS,
     DOMAIN,
 )
 from .error import CannotConnect, PairingFailed
@@ -40,6 +42,11 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
     """Discovery + manual + pair flow for a single HiFlow Pro."""
 
     VERSION = CONFIG_VERSION
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow handler (gear icon in HA UI)."""
+        return HiFlowBLEOptionsFlow(config_entry)
 
     def __init__(self) -> None:
         self._discovery_info: BluetoothServiceInfoBleak | None = None
@@ -173,3 +180,45 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
             },
             errors=errors,
         )
+
+
+class HiFlowBLEOptionsFlow(OptionsFlow):
+    """Options flow — lets the user adjust polling interval and timeout after setup."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the options form."""
+        # Read current values: options take priority over legacy data values.
+        current_interval = self._config_entry.options.get(
+            CONF_UPDATE_INTERVAL,
+            self._config_entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_SECONDS),
+        )
+        current_timeout = self._config_entry.options.get(
+            CONF_TIMEOUT,
+            self._config_entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS),
+        )
+
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
+                    CONF_TIMEOUT: user_input[CONF_TIMEOUT],
+                },
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_UPDATE_INTERVAL, default=current_interval): vol.All(
+                    vol.Coerce(int), vol.Range(min=MIN_UPDATE_INTERVAL_SECONDS)
+                ),
+                vol.Required(CONF_TIMEOUT, default=current_timeout): vol.All(
+                    vol.Coerce(int), vol.Range(min=MIN_TIMEOUT_SECONDS)
+                ),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

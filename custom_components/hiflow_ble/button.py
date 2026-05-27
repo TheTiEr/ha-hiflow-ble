@@ -1,4 +1,8 @@
-"""Button entities for HiFlow BLE."""
+"""Button entities for HiFlow BLE.
+
+All buttons belong to the *Wechselrichter* (inverter) device.
+The DTU restart button has been removed — there is no separate DTU device.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from hiflow_ble.hiflow import HiFlow
 
 from .const import (
-    CONF_DTU_SERIAL_NUMBER,
     CONF_INVERTERS,
     DOMAIN,
     HASS_HIFLOW,
@@ -35,13 +38,6 @@ class HiFlowButtonEntityDescription(HiFlowEntityDescription, ButtonEntityDescrip
 
 BUTTONS: tuple[HiFlowButtonEntityDescription, ...] = (
     HiFlowButtonEntityDescription(
-        key="restart_dtu",
-        translation_key="restart",
-        device_class=ButtonDeviceClass.RESTART,
-        is_dtu_sensor=True,
-        action="async_restart_dtu",
-    ),
-    HiFlowButtonEntityDescription(
         key="turn_off_inverter_<inverter_serial>",
         translation_key="turn_off",
         icon="mdi:power-off",
@@ -56,6 +52,7 @@ BUTTONS: tuple[HiFlowButtonEntityDescription, ...] = (
     HiFlowButtonEntityDescription(
         key="reboot_inverter_<inverter_serial>",
         translation_key="restart",
+        device_class=ButtonDeviceClass.RESTART,
         icon="mdi:restart",
         action="async_reboot_inverter",
     ),
@@ -70,7 +67,6 @@ async def async_setup_entry(
     """Set up the HiFlow button entities."""
     stash = hass.data[DOMAIN][entry.entry_id]
     hiflow: HiFlow = stash[HASS_HIFLOW]
-    dtu_sn: str = entry.data[CONF_DTU_SERIAL_NUMBER]
     inverters: list[str] = list(entry.data.get(CONF_INVERTERS, []))
 
     if not inverters:
@@ -78,22 +74,15 @@ async def async_setup_entry(
 
     buttons: list[HiFlowButtonEntity] = []
     for desc in BUTTONS:
-        if desc.is_dtu_sensor:
+        for inverter_sn in inverters:
+            new_key = desc.key.replace("<inverter_serial>", inverter_sn)
             buttons.append(
                 HiFlowButtonEntity(
-                    entry, dataclasses.replace(desc, serial_number=dtu_sn), hiflow
+                    entry,
+                    dataclasses.replace(desc, key=new_key, serial_number=inverter_sn),
+                    hiflow,
                 )
             )
-        else:
-            for inverter_sn in inverters:
-                new_key = desc.key.replace("<inverter_serial>", inverter_sn)
-                buttons.append(
-                    HiFlowButtonEntity(
-                        entry,
-                        dataclasses.replace(desc, key=new_key, serial_number=inverter_sn),
-                        hiflow,
-                    )
-                )
     async_add_entities(buttons)
 
 

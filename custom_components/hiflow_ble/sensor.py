@@ -2,12 +2,17 @@
 
 Mirrors the dataclass-based description pattern used by ``ha-hoymiles-wifi``.
 Scoped to single-phase inverters (no TGS, no built-in meter, no battery).
+
+All entities belong to the single *Wechselrichter* (inverter) device.
+Two computed entities aggregate per-port values:
+
+* ``ac_daily_energy``      — sum of Port N daily energy  (= AC Tagesertrag)
+* ``inverter_total_energy``— sum of Port N total energy  (= Gesamtertrag)
 """
 
 from __future__ import annotations
 
 import dataclasses
-import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -44,8 +49,6 @@ from .const import (
 from .coordinator import HiFlowDataUpdateCoordinator
 from .entity import HiFlowCoordinatorEntity, HiFlowEntityDescription
 
-_LOGGER = logging.getLogger(__name__)
-
 
 @dataclass(frozen=True)
 class HiFlowSensorEntityDescription(HiFlowEntityDescription, SensorEntityDescription):
@@ -57,27 +60,24 @@ class HiFlowSensorEntityDescription(HiFlowEntityDescription, SensorEntityDescrip
     force_keep_maximum_within_day: bool = False
 
 
+@dataclass(frozen=True)
+class HiFlowSumSensorEntityDescription(HiFlowSensorEntityDescription):
+    """Sensor that sums multiple data paths.
+
+    ``sum_paths`` is a tuple of ``(path, conversion_factor)`` pairs.
+    The sensor value is the sum of all resolved path values, each multiplied
+    by the corresponding factor (use ``None`` for no scaling).
+    """
+
+    sum_paths: tuple[tuple[str, float | None], ...] = ()
+
+
+# ---------------------------------------------------------------------------
+# Static sensor descriptions (per-inverter and per-port)
+# Computed / aggregate sensors are built dynamically in async_setup_entry.
+# ---------------------------------------------------------------------------
+
 HIFLOW_SENSORS: tuple[HiFlowSensorEntityDescription, ...] = (
-    # ----- DTU (gateway / inverter aggregator) -----
-    HiFlowSensorEntityDescription(
-        key="dtu_power",
-        translation_key="ac_active_power",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        conversion_factor=0.1,
-        is_dtu_sensor=True,
-    ),
-    HiFlowSensorEntityDescription(
-        key="dtu_daily_energy",
-        translation_key="ac_daily_energy",
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        reset_at_midnight=True,
-        force_keep_maximum_within_day=True,
-        is_dtu_sensor=True,
-    ),
     # ----- Per-inverter AC side (SGS = single grid string) -----
     HiFlowSensorEntityDescription(
         key="sgs_data[<inverter_count>].active_power",
@@ -201,15 +201,18 @@ async def async_setup_entry(
     inverters: list[str] = list(config_entry.data.get(CONF_INVERTERS, []))
     ports: list[dict] = list(config_entry.data.get(CONF_PORTS, []))
 
+    # All entities live on the inverter device — use first inverter SN, fall back to DTU SN.
+    inverter_sn: str = inverters[0] if inverters else dtu_sn
+
     entities: list[SensorEntity] = []
     for desc in HIFLOW_SENSORS:
         if "<inverter_count>" in desc.key:
-            for idx, inverter_sn in enumerate(inverters):
+            for idx, inv_sn in enumerate(inverters):
                 new_key = desc.key.replace("<inverter_count>", str(idx))
                 entities.append(
                     HiFlowDataSensorEntity(
                         config_entry,
-                        dataclasses.replace(desc, key=new_key, serial_number=inverter_sn),
+                        dataclasses.replace(desc, key=new_key, serial_number=inv_sn),
                         coordinator,
                     )
                 )
@@ -219,7 +222,7 @@ async def async_setup_entry(
                 updated = dataclasses.replace(
                     desc,
                     key=new_key,
-                    serial_number=port["inverter_serial_number"],
+                    serial_number=inverter_sn,
                     port_number=port["port_number"],
                 )
                 cls = (
@@ -228,14 +231,51 @@ async def async_setup_entry(
                     else HiFlowDataSensorEntity
                 )
                 entities.append(cls(config_entry, updated, coordinator))
-        else:
-            updated = dataclasses.replace(desc, serial_number=dtu_sn)
-            cls = (
-                HiFlowEnergySensorEntity
-                if updated.state_class == SensorStateClass.TOTAL_INCREASING
-                else HiFlowDataSensorEntity
+
+    # -----------------------------------------------------------------------
+    # Computed aggregate sensors
+    # -----------------------------------------------------------------------
+    if ports:
+        # AC Tagesertrag = Σ pv_data[n].energy_daily
+        daily_paths: tuple[tuple[str, float | None], ...] = tuple(
+            (f"pv_data[{idx}].energy_daily", None) for idx in range(len(ports))
+        )
+        entities.append(
+            HiFlowSumSensorEntity(
+                config_entry,
+                HiFlowSumSensorEntityDescription(
+                    key="ac_daily_energy_sum",
+                    translation_key="ac_daily_energy",
+                    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+                    device_class=SensorDeviceClass.ENERGY,
+                    state_class=SensorStateClass.TOTAL_INCREASING,
+                    reset_at_midnight=True,
+                    serial_number=inverter_sn,
+                    sum_paths=daily_paths,
+                ),
+                coordinator,
             )
-            entities.append(cls(config_entry, updated, coordinator))
+        )
+
+        # Gesamtertrag = Σ pv_data[n].energy_total
+        total_paths: tuple[tuple[str, float | None], ...] = tuple(
+            (f"pv_data[{idx}].energy_total", None) for idx in range(len(ports))
+        )
+        entities.append(
+            HiFlowSumSensorEntity(
+                config_entry,
+                HiFlowSumSensorEntityDescription(
+                    key="inverter_total_energy",
+                    translation_key="inverter_total_energy",
+                    native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+                    device_class=SensorDeviceClass.ENERGY,
+                    state_class=SensorStateClass.TOTAL_INCREASING,
+                    serial_number=inverter_sn,
+                    sum_paths=total_paths,
+                ),
+                coordinator,
+            )
+        )
 
     async_add_entities(entities)
 
@@ -367,3 +407,36 @@ class HiFlowEnergySensorEntity(HiFlowDataSensorEntity, RestoreSensor):
             self._last_known_value = state.native_value
         if self.entity_description.reset_at_midnight:
             self.schedule_midnight_reset(reset_sensor_value=False)
+
+
+class HiFlowSumSensorEntity(HiFlowEnergySensorEntity):
+    """Energy sensor that sums values from multiple data paths.
+
+    Overrides ``update_state_value`` — the ``key`` field in the description is
+    used only for the unique-id, not as a data path.
+    """
+
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        description: HiFlowSumSensorEntityDescription,
+        coordinator: HiFlowDataUpdateCoordinator,
+    ) -> None:
+        super().__init__(config_entry, description, coordinator)
+        self._sum_paths: tuple[tuple[str, float | None], ...] = description.sum_paths
+
+    def update_state_value(self) -> None:
+        data = getattr(self.coordinator, "data", None)
+        if data is None:
+            self._native_value = 0.0
+            self._last_update_state = datetime.now()
+            return
+        total = 0.0
+        all_none = True
+        for path, factor in self._sum_paths:
+            val = _resolve_path(data, path)
+            if val is not None:
+                all_none = False
+                total += val * factor if factor is not None else val
+        self._native_value = None if all_none else total
+        self._last_update_state = datetime.now()
