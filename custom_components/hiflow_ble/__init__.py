@@ -14,6 +14,8 @@ from hiflow_ble.hiflow import HiFlow
 
 from .const import (
     CONF_ADDRESS,
+    CONF_BLE_ID,
+    CONF_BLE_PIN,
     CONF_ENC_RAND,
     CONF_SN,
     CONF_TIMEOUT,
@@ -51,6 +53,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     address: str = entry.data[CONF_ADDRESS]
     enc_rand_hex: str = entry.data[CONF_ENC_RAND]
     sn: str = entry.data[CONF_SN]
+    ble_id: str = entry.data.get(CONF_BLE_ID, "")
+    pin: str = entry.data.get(CONF_BLE_PIN, "")
     timeout = entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS)
     update_interval = timedelta(
         seconds=entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL_SECONDS)
@@ -59,11 +63,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     target = ble_device if ble_device is not None else address
 
-    hiflow = HiFlow(target, enc_rand=bytes.fromhex(enc_rand_hex), sn=sn, timeout=timeout)
+    hiflow = HiFlow(
+        target,
+        enc_rand=bytes.fromhex(enc_rand_hex),
+        sn=sn,
+        timeout=timeout,
+        ble_id=ble_id,
+        pin=pin,
+    )
     try:
         await hiflow.connect()
+        # Run the CommCmd handshake so the device accepts V1 requests right away.
+        # The coordinator's _ensure_connected will redo this after every reconnect.
+        await hiflow.async_do_comm_cmd_handshake()
     except Exception as err:
-        _LOGGER.warning("HiFlow initial connect failed for %s: %s", address, err)
+        _LOGGER.warning("HiFlow initial connect/handshake failed for %s: %s", address, err)
         # Don't bail — the coordinator's _ensure_connected will retry.
 
     data_coordinator = HiFlowRealDataUpdateCoordinator(

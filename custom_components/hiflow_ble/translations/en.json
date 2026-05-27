@@ -11,7 +11,10 @@
       },
       "pair": {
         "title": "Pair with {name}",
-        "description": "About to pair with {name} ({address}). Make sure the S-Miles app is fully closed — the inverter only accepts one Bluetooth connection at a time."
+        "description": "About to pair with {name} ({address}). Make sure the S-Miles app is fully closed — the inverter only accepts one Bluetooth connection at a time.\n\nEnter the BLE PIN you set in the S-Miles app (the one you enter when the app asks for a PIN to connect via Bluetooth).",
+        "data": {
+          "ble_pin": "BLE PIN"
+        }
       }
     },
     "error": {

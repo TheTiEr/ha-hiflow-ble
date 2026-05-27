@@ -50,18 +50,36 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
         return self._hiflow
 
     async def _ensure_connected(self) -> bool:
-        """Reconnect if dropped; returns False if the link can't be brought up."""
-        if self._hiflow.is_connected:
+        """Reconnect if dropped; run CommCmd handshake on fresh connections.
+
+        Returns False if the BLE link can't be established at all.  A handshake
+        failure is logged but does *not* cause a False return — the coordinator
+        will attempt data requests anyway; they'll return None (unavailable)
+        if the device still refuses them.
+        """
+        was_connected = self._hiflow.is_connected
+        if was_connected and self._hiflow._handshake_done:
             return True
-        try:
-            await self._hiflow._ensure_connected()  # uses backoff internally
-            return True
-        except BleLinkError as err:
-            _LOGGER.debug("HiFlow reconnect failed: %s", err)
-            return False
-        except Exception as err:
-            _LOGGER.debug("HiFlow reconnect raised unexpectedly: %s", err)
-            return False
+
+        if not was_connected:
+            try:
+                await self._hiflow._ensure_connected()  # uses backoff internally
+            except BleLinkError as err:
+                _LOGGER.debug("HiFlow reconnect failed: %s", err)
+                return False
+            except Exception as err:
+                _LOGGER.debug("HiFlow reconnect raised unexpectedly: %s", err)
+                return False
+
+        # Fresh (or handshake-less) connection — run the CommCmd handshake.
+        # This covers: first setup, overnight device reboot, any BLE link drop.
+        if not self._hiflow._handshake_done:
+            try:
+                await self._hiflow.async_do_comm_cmd_handshake()
+            except Exception as err:
+                _LOGGER.warning("CommCmd handshake failed: %s", err)
+                # Continue — data requests will surface unavailability naturally.
+        return True
 
     async def _call_with_repair(
         self,

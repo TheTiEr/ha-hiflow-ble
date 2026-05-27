@@ -15,6 +15,8 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
 from .const import (
     CONF_ADDRESS,
+    CONF_BLE_ID,
+    CONF_BLE_PIN,
     CONF_DTU_SERIAL_NUMBER,
     CONF_ENC_RAND,
     CONF_INVERTERS,
@@ -44,6 +46,7 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         self._address: str | None = None
         self._local_name: str | None = None
         self._sn: str | None = None
+        self._pin: str = ""
 
     # ----- Bluetooth-triggered discovery -----
 
@@ -107,23 +110,33 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_pair(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Confirm with the user, then run pairing + probe."""
+        """Ask for BLE PIN, then run pairing + probe."""
         assert self._address is not None
         assert self._sn is not None
 
         if user_input is None:
+            # Show the form with a PIN field — required to whitelist our bleId.
             return self.async_show_form(
                 step_id="pair",
+                data_schema=vol.Schema(
+                    {vol.Required(CONF_BLE_PIN): str}
+                ),
                 description_placeholders={
                     "name": self._local_name or self._address,
                     "address": self._address,
                 },
             )
 
+        self._pin = user_input.get(CONF_BLE_PIN, "")
+
         errors: dict[str, str] = {}
         try:
             probed = await async_pair_and_probe(
-                self.hass, self._address, sn=self._sn, local_name=self._local_name
+                self.hass,
+                self._address,
+                sn=self._sn,
+                local_name=self._local_name,
+                pin=self._pin,
             )
         except PairingFailed as err:
             _LOGGER.warning("Pairing failed for %s: %s", self._address, err)
@@ -139,6 +152,8 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_NAME_LOCAL: self._local_name,
                     CONF_SN: self._sn,
                     CONF_ENC_RAND: probed["enc_rand"],
+                    CONF_BLE_ID: probed["ble_id"],
+                    CONF_BLE_PIN: self._pin,
                     CONF_DTU_SERIAL_NUMBER: probed["dtu_serial_number"],
                     CONF_INVERTERS: probed["inverters"],
                     CONF_PORTS: probed["ports"],
@@ -149,6 +164,9 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="pair",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_BLE_PIN): str}
+            ),
             description_placeholders={
                 "name": self._local_name or self._address,
                 "address": self._address,

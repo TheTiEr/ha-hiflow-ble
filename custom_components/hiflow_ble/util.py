@@ -9,7 +9,7 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from hiflow_ble.hiflow import HiFlow
+from hiflow_ble.hiflow import HiFlow, generate_ble_id
 from hiflow_ble.hoymiles import generate_inverter_serial_number
 
 from .const import CONF_ENC_RAND, DEFAULT_TIMEOUT_SECONDS
@@ -33,15 +33,18 @@ async def async_pair_and_probe(
     address: str,
     sn: str | None = None,
     local_name: str | None = None,
+    pin: str = "",
 ) -> dict[str, Any]:
-    """Pair with the inverter, extract encRand, probe RealData.
+    """Pair with the inverter, extract encRand, run CommCmd handshake, probe RealData.
 
-    Returns a dict with: ``enc_rand`` (hex), ``dtu_serial_number``,
+    Returns a dict with: ``enc_rand`` (hex), ``ble_id``, ``dtu_serial_number``,
     ``inverters`` (list of hex SN strings), ``ports`` (list of dicts).
 
+    ``pin``: the user's custom BLE PIN (set via the S-Miles app).  Required on
+    first pair when the generated bleId is not yet in the device's whitelist.
+
     Raises :class:`PairingFailed` if the V0 handshake doesn't yield encRand
-    (usually because the S-Miles app is still bonded), or
-    :class:`CannotConnect` if the BLE link itself fails.
+    or the CommCmd handshake fails, or :class:`CannotConnect` on BLE failure.
     """
     if sn is None:
         sn = derive_sn_from_local_name(local_name)
@@ -51,7 +54,11 @@ async def async_pair_and_probe(
     ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
     target = ble_device if ble_device is not None else address
 
-    hiflow = HiFlow(target, sn=sn, timeout=DEFAULT_TIMEOUT_SECONDS)
+    # Generate a stable bleId for this device — persisted in the config entry
+    # so the same ID is reused on every reconnect (avoids repeated PIN prompts).
+    ble_id = generate_ble_id()
+
+    hiflow = HiFlow(target, sn=sn, timeout=DEFAULT_TIMEOUT_SECONDS, ble_id=ble_id, pin=pin)
     try:
         try:
             await hiflow.connect()
@@ -65,12 +72,22 @@ async def async_pair_and_probe(
             _LOGGER.debug("V0 pairing failed: %s", err)
             raise PairingFailed(str(err)) from err
 
+        # CommCmd handshake: login (action=64) + optional PIN (action=82) + time-sync (action=104).
+        # The device won't answer V1 RealData requests until this succeeds.
+        ok = await hiflow.async_do_comm_cmd_handshake(ble_id=ble_id, pin=pin)
+        if not ok:
+            raise PairingFailed(
+                "CommCmd handshake failed — check the BLE PIN and make sure the "
+                "S-Miles app is not connected."
+            )
+
         real_data = await hiflow.async_get_real_data_new()
         if real_data is None:
             raise CannotConnect("inverter returned no RealData after pairing")
 
         return {
             "enc_rand": hiflow.enc_rand.hex(),
+            "ble_id": ble_id,
             "dtu_serial_number": real_data.device_serial_number,
             "inverters": [
                 generate_inverter_serial_number(s.serial_number)

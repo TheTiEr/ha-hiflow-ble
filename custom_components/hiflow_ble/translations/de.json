@@ -11,7 +11,10 @@
       },
       "pair": {
         "title": "Mit {name} koppeln",
-        "description": "Kopplung mit {name} ({address}) wird gestartet. Bitte die S-Miles-App komplett schließen — der Wechselrichter erlaubt nur eine Bluetooth-Verbindung gleichzeitig."
+        "description": "Kopplung mit {name} ({address}) wird gestartet. Bitte die S-Miles-App komplett schließen — der Wechselrichter erlaubt nur eine Bluetooth-Verbindung gleichzeitig.\n\nGib den BLE-PIN ein, den du in der S-Miles-App gesetzt hast (der PIN, den die App beim Verbinden per Bluetooth abfragt).",
+        "data": {
+          "ble_pin": "BLE-PIN"
+        }
       }
     },
     "error": {
