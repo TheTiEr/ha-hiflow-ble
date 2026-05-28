@@ -74,11 +74,27 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
         # Fresh (or handshake-less) connection — run the CommCmd handshake.
         # This covers: first setup, overnight device reboot, any BLE link drop.
         if not self._hiflow._handshake_done:
+            ok = False
             try:
-                await self._hiflow.async_do_comm_cmd_handshake()
+                ok = await self._hiflow.async_do_comm_cmd_handshake()
             except Exception as err:
-                _LOGGER.warning("CommCmd handshake failed: %s", err)
-                # Continue — data requests will surface unavailability naturally.
+                _LOGGER.warning("CommCmd handshake raised: %s", err)
+            if not ok:
+                # Handshake failure most likely means encRand is stale (device
+                # rebooted and generated a new one). V0 re-pair refreshes it
+                # transparently without user interaction.
+                _LOGGER.debug(
+                    "CommCmd handshake failed — attempting V0 re-pair to refresh encRand"
+                )
+                try:
+                    new_key = await self._hiflow.async_extract_enc_rand()
+                    await async_check_and_update_enc_rand(
+                        self.hass, self._config_entry, self._hiflow, new_key.hex()
+                    )
+                    await self._hiflow.async_do_comm_cmd_handshake()
+                except Exception as err:
+                    _LOGGER.debug("V0 re-pair after failed handshake: %s", err)
+                    # Device truly offline — data requests will return None.
         return True
 
     async def _call_with_repair(
