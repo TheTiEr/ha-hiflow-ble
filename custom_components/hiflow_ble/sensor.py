@@ -416,14 +416,20 @@ class HiFlowSumSensorEntity(HiFlowEnergySensorEntity):
     used only for the unique-id, not as a data path.
     """
 
+    # Class-level default so update_state_value() is safe when called by
+    # super().__init__() before self._sum_paths is assigned.
+    _sum_paths: tuple[tuple[str, float | None], ...] = ()
+
     def __init__(
         self,
         config_entry: ConfigEntry,
         description: HiFlowSumSensorEntityDescription,
         coordinator: HiFlowDataUpdateCoordinator,
     ) -> None:
+        # Assign before super().__init__() because HiFlowDataSensorEntity.__init__
+        # calls self.update_state_value(), which reads self._sum_paths.
+        self._sum_paths = description.sum_paths
         super().__init__(config_entry, description, coordinator)
-        self._sum_paths: tuple[tuple[str, float | None], ...] = description.sum_paths
 
     def update_state_value(self) -> None:
         data = getattr(self.coordinator, "data", None)
