@@ -19,6 +19,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Awaitable, Callable
 
+from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -26,7 +27,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from hiflow_ble.errors import BleLinkError, EncRandStale
 from hiflow_ble.hiflow import HiFlow
 
-from .const import DOMAIN
+from .const import CONF_ADDRESS, DOMAIN
 from .util import async_check_and_update_enc_rand
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +63,17 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
             return True
 
         if not was_connected:
+            # Refresh the BLEDevice so bleak_retry_connector uses up-to-date
+            # advertising data. After a long uptime or overnight downtime the
+            # cached BLEDevice object may be stale; a fresh lookup avoids
+            # connection failures caused by outdated metadata.
+            fresh = bluetooth.async_ble_device_from_address(
+                self.hass,
+                self._config_entry.data[CONF_ADDRESS],
+                connectable=True,
+            )
+            if fresh is not None:
+                self._hiflow.address = fresh
             try:
                 await self._hiflow._ensure_connected()  # uses backoff internally
             except BleLinkError as err:
