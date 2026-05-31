@@ -184,6 +184,7 @@ HIFLOW_SENSORS: tuple[HiFlowSensorEntityDescription, ...] = (
         key="pv_data[<pv_count>].error_code",
         translation_key="port_error_code",
         entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:check-circle-outline",
     ),
 )
 
@@ -225,11 +226,12 @@ async def async_setup_entry(
                     serial_number=inverter_sn,
                     port_number=port["port_number"],
                 )
-                cls = (
-                    HiFlowEnergySensorEntity
-                    if updated.state_class == SensorStateClass.TOTAL_INCREASING
-                    else HiFlowDataSensorEntity
-                )
+                if updated.translation_key == "port_error_code":
+                    cls = HiFlowErrorCodeSensorEntity
+                elif updated.state_class == SensorStateClass.TOTAL_INCREASING:
+                    cls = HiFlowEnergySensorEntity
+                else:
+                    cls = HiFlowDataSensorEntity
                 entities.append(cls(config_entry, updated, coordinator))
 
     # -----------------------------------------------------------------------
@@ -446,3 +448,44 @@ class HiFlowSumSensorEntity(HiFlowEnergySensorEntity):
                 total += val * factor if factor is not None else val
         self._native_value = None if all_none else total
         self._last_update_state = datetime.now()
+
+
+class HiFlowErrorCodeSensorEntity(HiFlowDataSensorEntity):
+    """Diagnostic sensor for PvMO.error_code.
+
+    Exposes the raw integer code as ``native_value`` (for automations) and
+    adds ``extra_state_attributes`` with a human-readable status string and
+    the hex representation so users can quickly see whether a port is healthy.
+
+    The ``error_code`` bitmask comes from the inverter firmware; individual bit
+    meanings are device-specific and fetched server-side by the S-Miles app.
+    The only portable interpretation is: 0 = normal, non-zero = fault/status.
+    """
+
+    @property
+    def icon(self) -> str:
+        code = self._native_value
+        if code is None or code == 0:
+            return "mdi:check-circle-outline"
+        return "mdi:alert-circle-outline"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        code = self._native_value
+        if code is None:
+            return {"status": "unavailable", "hex_code": None}
+        code_int = int(code)
+        if code_int == 0:
+            status = "normal"
+        else:
+            # Decode known bitmask structure from WarnData:
+            # bits 0-8 (code & 0x1FF): alarm type ID
+            # (code & 0xD000) >> 14: severity (1 = critical)
+            alarm_id = code_int & 0x1FF
+            severity_bits = (code_int & 0xD000) >> 14
+            severity = "critical" if severity_bits == 1 else "fault"
+            status = f"{severity} (alarm {alarm_id})"
+        return {
+            "status": status,
+            "hex_code": f"0x{code_int:04X}",
+        }

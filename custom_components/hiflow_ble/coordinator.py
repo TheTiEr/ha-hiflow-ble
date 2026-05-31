@@ -45,10 +45,31 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
     ) -> None:
         self._hiflow = hiflow
         self._config_entry = config_entry
+        # Track reachability so we log WARNING once per outage, not every poll.
+        self._device_reachable: bool = True
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=update_interval)
 
     def get_hiflow(self) -> HiFlow:
         return self._hiflow
+
+    def _on_unreachable(self, reason: str) -> None:
+        """Log at WARNING the first time the device goes offline; silent after."""
+        if self._device_reachable:
+            _LOGGER.warning(
+                "HiFlow device %s unreachable — sensors will show unavailable (%s)",
+                self._config_entry.data.get(CONF_ADDRESS, "?"),
+                reason,
+            )
+            self._device_reachable = False
+
+    def _on_reachable(self) -> None:
+        """Log at WARNING when the device comes back after an outage."""
+        if not self._device_reachable:
+            _LOGGER.warning(
+                "HiFlow device %s is back online",
+                self._config_entry.data.get(CONF_ADDRESS, "?"),
+            )
+            self._device_reachable = True
 
     async def _ensure_connected(self) -> bool:
         """Reconnect if dropped; run CommCmd handshake on fresh connections.
@@ -60,6 +81,7 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
         """
         was_connected = self._hiflow.is_connected
         if was_connected and self._hiflow._handshake_done:
+            self._on_reachable()
             return True
 
         if not was_connected:
@@ -78,9 +100,11 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
                 await self._hiflow._ensure_connected()  # uses backoff internally
             except BleLinkError as err:
                 _LOGGER.debug("HiFlow reconnect failed: %s", err)
+                self._on_unreachable(str(err))
                 return False
             except Exception as err:
                 _LOGGER.debug("HiFlow reconnect raised unexpectedly: %s", err)
+                self._on_unreachable(str(err))
                 return False
 
         # Fresh (or handshake-less) connection — run the CommCmd handshake.
@@ -95,7 +119,7 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
                 # Handshake failure most likely means encRand is stale (device
                 # rebooted and generated a new one). V0 re-pair refreshes it
                 # transparently without user interaction.
-                _LOGGER.debug(
+                _LOGGER.warning(
                     "CommCmd handshake failed — attempting V0 re-pair to refresh encRand"
                 )
                 try:
@@ -103,10 +127,17 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
                     await async_check_and_update_enc_rand(
                         self.hass, self._config_entry, self._hiflow, new_key.hex()
                     )
-                    await self._hiflow.async_do_comm_cmd_handshake()
+                    ok = await self._hiflow.async_do_comm_cmd_handshake()
+                    if ok:
+                        _LOGGER.warning("V0 re-pair succeeded — encRand refreshed")
+                    else:
+                        _LOGGER.warning(
+                            "V0 re-pair done but second handshake still failed — "
+                            "device may be truly offline"
+                        )
                 except Exception as err:
-                    _LOGGER.debug("V0 re-pair after failed handshake: %s", err)
-                    # Device truly offline — data requests will return None.
+                    _LOGGER.warning("V0 re-pair after failed handshake: %s", err)
+        self._on_reachable()
         return True
 
     async def _call_with_repair(
@@ -151,6 +182,9 @@ class HiFlowRealDataUpdateCoordinator(HiFlowDataUpdateCoordinator):
         response = await self._call_with_repair(self._hiflow.async_get_real_data_new)
         if not response:
             _LOGGER.debug("HiFlow real_data_new returned nothing — inverter offline?")
+            self._on_unreachable("no response to RealDataNew request")
+        else:
+            self._on_reachable()
         return response
 
 
