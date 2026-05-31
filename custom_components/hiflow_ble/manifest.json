@@ -7,7 +7,10 @@
   "documentation": "https://github.com/TheTiEr/ha-hiflow-ble",
   "issue_tracker": "https://github.com/TheTiEr/ha-hiflow-ble/issues",
   "iot_class": "local_push",
-  "requirements": ["hiflow-ble==0.1.0", "bleak-retry-connector>=3.0.0"],
+  "requirements": [
+    "hiflow-ble @ git+https://github.com/TheTiEr/hiflow-ble.git",
+    "bleak-retry-connector>=3.0.0"
+  ],
   "bluetooth": [
     {
       "local_name": "RMI-*"
