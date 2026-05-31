@@ -77,14 +77,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ble_id=ble_id,
         pin=pin,
     )
-    try:
-        await hiflow.connect()
-        # Run the CommCmd handshake so the device accepts V1 requests right away.
-        # The coordinator's _ensure_connected will redo this after every reconnect.
-        await hiflow.async_do_comm_cmd_handshake()
-    except Exception as err:
-        _LOGGER.warning("HiFlow initial connect/handshake failed for %s: %s", address, err)
-        # Don't bail — the coordinator's _ensure_connected will retry.
 
     data_coordinator = HiFlowRealDataUpdateCoordinator(
         hass, hiflow, entry, update_interval
@@ -104,7 +96,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    await data_coordinator.async_config_entry_first_refresh()
+    # Do NOT block setup on a BLE connect attempt — the inverter may be
+    # unreachable at HA startup (proxy too far away, overnight power-off, …).
+    # The coordinator will connect and run the CommCmd handshake on its first
+    # scheduled poll; entities show as unavailable in the meantime.
+    entry.async_create_background_task(
+        hass,
+        data_coordinator.async_refresh(),
+        name="hiflow_ble_initial_refresh",
+    )
 
     # Reload the entry when the user saves new options (e.g. changed interval).
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options_change))
