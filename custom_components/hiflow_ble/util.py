@@ -52,6 +52,17 @@ async def async_pair_and_probe(
         raise PairingFailed("cannot derive SN from BLE name and none provided")
 
     ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+    if ble_device is not None:
+        _LOGGER.debug(
+            "Pairing via connectable proxy/adapter: %s (name=%s)",
+            ble_device.address, ble_device.name,
+        )
+    else:
+        _LOGGER.warning(
+            "No connectable Bluetooth proxy found for %s — trying direct connection. "
+            "If pairing fails, add an ESPHome BLE proxy (active: true) near the inverter.",
+            address,
+        )
     target = ble_device if ble_device is not None else address
 
     # Generate a stable bleId for this device — persisted in the config entry
@@ -63,19 +74,33 @@ async def async_pair_and_probe(
         try:
             await hiflow.connect()
         except Exception as err:
-            _LOGGER.debug("connect() failed: %s", err)
+            _LOGGER.warning(
+                "BLE connect failed for %s: %s — "
+                "check that a connectable proxy is in range and the S-Miles app is closed",
+                address, err,
+            )
             raise CannotConnect(str(err)) from err
 
         try:
             await hiflow.async_extract_enc_rand()
         except Exception as err:
-            _LOGGER.debug("V0 pairing failed: %s", err)
+            _LOGGER.warning(
+                "V0 pairing (encRand extraction) failed for %s: %s — "
+                "ensure S-Miles app is fully closed and the PIN is correct",
+                address, err,
+            )
             raise PairingFailed(str(err)) from err
 
         # CommCmd handshake: login (action=64) + optional PIN (action=82) + time-sync (action=104).
         # The device won't answer V1 RealData requests until this succeeds.
         ok = await hiflow.async_do_comm_cmd_handshake(ble_id=ble_id, pin=pin)
         if not ok:
+            _LOGGER.warning(
+                "CommCmd handshake failed for %s — bleId not accepted. "
+                "Close the S-Miles app, verify the BLE PIN is correct, "
+                "and make sure only one BLE client is connected at a time.",
+                address,
+            )
             raise PairingFailed(
                 "CommCmd handshake failed — check the BLE PIN and make sure the "
                 "S-Miles app is not connected."
@@ -83,6 +108,11 @@ async def async_pair_and_probe(
 
         real_data = await hiflow.async_get_real_data_new()
         if real_data is None:
+            _LOGGER.warning(
+                "No RealData response from %s after successful pairing — "
+                "inverter may need more time to start up",
+                address,
+            )
             raise CannotConnect("inverter returned no RealData after pairing")
 
         return {
