@@ -132,6 +132,10 @@ class HiFlowPowerLimitNumber(HiFlowCoordinatorEntity, NumberEntity):
         super()._handle_coordinator_update()
 
     @property
+    def available(self) -> bool:
+        return True
+
+    @property
     def native_value(self) -> float | None:
         return self._native_value
 
@@ -186,6 +190,10 @@ class HiFlowPowerLimitWattNumber(HiFlowCoordinatorEntity, NumberEntity):
     def _handle_coordinator_update(self) -> None:
         self.update_state_value()
         super()._handle_coordinator_update()
+
+    @property
+    def available(self) -> bool:
+        return True
 
     @property
     def native_value(self) -> float | None:
