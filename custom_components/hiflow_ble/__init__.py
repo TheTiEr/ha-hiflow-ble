@@ -22,17 +22,20 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_APP_INFO_UPDATE_INTERVAL_SECONDS,
     DEFAULT_CONFIG_UPDATE_INTERVAL_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_UPDATE_INTERVAL_SECONDS,
     DOMAIN,
     HASS_APP_INFO_COORDINATOR,
     HASS_CONFIG_COORDINATOR,
     HASS_DATA_COORDINATOR,
+    HASS_HEARTBEAT_COORDINATOR,
     HASS_HIFLOW,
 )
 from .coordinator import (
     HiFlowAppInfoUpdateCoordinator,
     HiFlowConfigUpdateCoordinator,
+    HiFlowHeartbeatCoordinator,
     HiFlowRealDataUpdateCoordinator,
 )
 
@@ -87,12 +90,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     app_info_coordinator = HiFlowAppInfoUpdateCoordinator(
         hass, hiflow, entry, timedelta(seconds=DEFAULT_APP_INFO_UPDATE_INTERVAL_SECONDS)
     )
+    heartbeat_coordinator = HiFlowHeartbeatCoordinator(
+        hass, hiflow, entry, timedelta(seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS)
+    )
 
     hass.data[DOMAIN][entry.entry_id] = {
         HASS_HIFLOW: hiflow,
         HASS_DATA_COORDINATOR: data_coordinator,
         HASS_CONFIG_COORDINATOR: config_coordinator,
         HASS_APP_INFO_COORDINATOR: app_info_coordinator,
+        HASS_HEARTBEAT_COORDINATOR: heartbeat_coordinator,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -104,6 +111,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         data_coordinator.async_refresh(),
         name="hiflow_ble_initial_refresh",
+    )
+    # Start the heartbeat scheduler so it fires after the first data poll
+    # succeeds and the BLE link is established.
+    entry.async_create_background_task(
+        hass,
+        heartbeat_coordinator.async_refresh(),
+        name="hiflow_ble_initial_heartbeat",
     )
 
     # Reload the entry when the user saves new options (e.g. changed interval).

@@ -6,6 +6,9 @@ The base class provides two robustness primitives that every subclass uses:
 * :meth:`_ensure_connected` — reconnect if the BLE link dropped between polls.
   The library already retries with backoff internally, but bailing out here
   prevents wasted work when the device is unreachable for the whole interval.
+  The BLEDevice object is refreshed on *every* call (not only at reconnect
+  time) so that ``bleak_retry_connector.establish_connection`` is always used
+  instead of the plain ``BleakClient.connect()`` fallback.
 
 * :meth:`_call_with_repair` — wraps a HiFlow call so that an
   :class:`hiflow_ble.errors.EncRandStale` raised by the library triggers a
@@ -78,24 +81,39 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
         failure is logged but does *not* cause a False return — the coordinator
         will attempt data requests anyway; they'll return None (unavailable)
         if the device still refuses them.
+
+        The BLEDevice is refreshed on every call so that the next reconnect
+        always goes through ``bleak_retry_connector.establish_connection``
+        (which requires a live BLEDevice, not a plain MAC string).  Keeping
+        the object current also avoids stale advertising-data failures after
+        long uptimes or overnight device reboots.
         """
+        # Always refresh the BLEDevice — not only at reconnect time.
+        # bleak_retry_connector.establish_connection() requires a BLEDevice;
+        # if we only update it when already disconnected we might miss a
+        # re-advertisement cycle and fall back to the plain BleakClient path,
+        # which triggers Bleak's "called without bleak-retry-connector" warning.
+        fresh = bluetooth.async_ble_device_from_address(
+            self.hass,
+            self._config_entry.data[CONF_ADDRESS],
+            connectable=True,
+        )
+        if fresh is not None:
+            self._hiflow.address = fresh
+
         was_connected = self._hiflow.is_connected
         if was_connected and self._hiflow._handshake_done:
             self._on_reachable()
             return True
 
         if not was_connected:
-            # Refresh the BLEDevice so bleak_retry_connector uses up-to-date
-            # advertising data. After a long uptime or overnight downtime the
-            # cached BLEDevice object may be stale; a fresh lookup avoids
-            # connection failures caused by outdated metadata.
-            fresh = bluetooth.async_ble_device_from_address(
-                self.hass,
-                self._config_entry.data[CONF_ADDRESS],
-                connectable=True,
-            )
-            if fresh is not None:
-                self._hiflow.address = fresh
+            if fresh is None:
+                _LOGGER.debug(
+                    "HiFlow: no connectable BLEDevice found for %s — "
+                    "reconnect will use cached address (bleak_retry_connector "
+                    "path unavailable until device re-advertises)",
+                    self._config_entry.data.get(CONF_ADDRESS, "?"),
+                )
             try:
                 await self._hiflow._ensure_connected()  # uses backoff internally
             except BleLinkError as err:
@@ -209,4 +227,29 @@ class HiFlowAppInfoUpdateCoordinator(HiFlowDataUpdateCoordinator):
         response = await self._call_with_repair(self._hiflow.async_app_information_data)
         if not response:
             _LOGGER.debug("HiFlow app_information_data returned nothing")
+        return response
+
+
+class HiFlowHeartbeatCoordinator(HiFlowDataUpdateCoordinator):
+    """Lightweight heartbeat to prevent the inverter from dropping idle BLE links.
+
+    The HiFlow Pro (and its ESPHome BLE proxy path) disconnects the BLE client
+    after roughly 90 seconds of inactivity.  This coordinator fires every
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS (45 s by default) and sends a HBResDTO
+    frame — cheap enough to keep the link warm without interfering with the data
+    or config pollers.
+
+    Crucially it does *not* trigger reconnects: if the link is already down the
+    data coordinator (which runs more recovery logic) handles reconnection.  This
+    avoids two coordinators racing to re-establish the same BLE connection.
+    """
+
+    async def _async_update_data(self):
+        if not self._hiflow.is_connected or not self._hiflow._handshake_done:
+            # Link is down or handshake pending — let the data coordinator
+            # handle recovery; don't start a competing reconnect here.
+            return None
+        response = await self._hiflow.async_heartbeat()
+        if not response:
+            _LOGGER.debug("HiFlow heartbeat returned nothing — link may be dropping")
         return response
