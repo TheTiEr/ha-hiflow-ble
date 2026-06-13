@@ -5,11 +5,13 @@
         "title": "HiFlow BLE Einstellungen",
         "data": {
           "update_interval": "Abfrageintervall (Sekunden)",
-          "timeout": "BLE-Anfrage-Timeout (Sekunden)"
+          "timeout": "BLE-Anfrage-Timeout (Sekunden)",
+          "rated_power_w": "Nennleistung des Wechselrichters (W)"
         },
         "data_description": {
           "update_interval": "Wie oft Home Assistant den Wechselrichter nach Leistungsdaten abfragt. Niedrigere Werte geben schnellere Aktualisierungen, beanspruchen aber die BLE-Verbindung stärker. Minimum: 5 s.",
-          "timeout": "Maximale Wartezeit auf eine BLE-Antwort, bevor die Anfrage als fehlgeschlagen gilt. Minimum: 5 s."
+          "timeout": "Maximale Wartezeit auf eine BLE-Antwort, bevor die Anfrage als fehlgeschlagen gilt. Minimum: 5 s.",
+          "rated_power_w": "Nennleistung deines Wechselrichters in Watt (z. B. 800 für den HiFlow 800). 0 = Watt-Regler deaktiviert. Den Wert des Diagnose-Sensors 'Port N Hardware-Teilenummer' bitte im GitHub-Issue-Tracker melden, falls er unbekannt ist."
         }
       }
     }
@@ -47,7 +49,8 @@
       "ble_link": { "name": "BLE-Verbindung" }
     },
     "number": {
-      "limit_power_mypower": { "name": "Leistungsbegrenzung" }
+      "limit_power_mypower": { "name": "Leistungsbegrenzung" },
+      "limit_power_mypower_watt": { "name": "Leistungsbegrenzung (W)" }
     },
     "button": {
       "restart": { "name": "Neu starten" },
@@ -70,7 +73,8 @@
       "port_dc_power": { "name": "Port {port_number} DC-Leistung" },
       "port_dc_total_energy": { "name": "Port {port_number} Gesamtertrag" },
       "port_dc_daily_energy": { "name": "Port {port_number} Tagesertrag" },
-      "port_error_code": { "name": "Port {port_number} Fehlercode" }
+      "port_error_code": { "name": "Port {port_number} Fehlercode" },
+      "pv_hw_part_number": { "name": "Port {port_number} Hardware-Teilenummer" }
     }
   },
   "device": {

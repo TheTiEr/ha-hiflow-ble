@@ -5,11 +5,13 @@
         "title": "HiFlow BLE options",
         "data": {
           "update_interval": "Polling interval (seconds)",
-          "timeout": "BLE request timeout (seconds)"
+          "timeout": "BLE request timeout (seconds)",
+          "rated_power_w": "Inverter rated power (W)"
         },
         "data_description": {
           "update_interval": "How often Home Assistant polls the inverter for power data. Lower values give faster updates but keep the BLE link busy. Minimum: 5 s.",
-          "timeout": "Maximum time to wait for a BLE response before marking the request as failed. Minimum: 5 s."
+          "timeout": "Maximum time to wait for a BLE response before marking the request as failed. Minimum: 5 s.",
+          "rated_power_w": "Rated peak output power of your inverter in Watt (e.g. 800 for HiFlow 800). Set to 0 to disable the Watt-based power limit slider. Check the diagnostic sensor 'Port N hardware part number' and report unknown values at the GitHub issue tracker."
         }
       }
     }
@@ -47,7 +49,8 @@
       "ble_link": { "name": "BLE connectivity" }
     },
     "number": {
-      "limit_power_mypower": { "name": "Power limit" }
+      "limit_power_mypower": { "name": "Power limit" },
+      "limit_power_mypower_watt": { "name": "Power limit (W)" }
     },
     "button": {
       "restart": { "name": "Restart" },
@@ -70,7 +73,8 @@
       "port_dc_power": { "name": "Port {port_number} DC power" },
       "port_dc_total_energy": { "name": "Port {port_number} total energy" },
       "port_dc_daily_energy": { "name": "Port {port_number} daily energy" },
-      "port_error_code": { "name": "Port {port_number} error code" }
+      "port_error_code": { "name": "Port {port_number} error code" },
+      "pv_hw_part_number": { "name": "Port {port_number} hardware part number" }
     }
   },
   "device": {

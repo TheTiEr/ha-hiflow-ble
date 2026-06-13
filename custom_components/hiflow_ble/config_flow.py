@@ -22,14 +22,17 @@ from .const import (
     CONF_INVERTERS,
     CONF_NAME_LOCAL,
     CONF_PORTS,
+    CONF_RATED_POWER_W,
     CONF_SN,
     CONF_TIMEOUT,
     CONF_UPDATE_INTERVAL,
     CONFIG_VERSION,
+    DEFAULT_RATED_POWER_W,
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_UPDATE_INTERVAL_SECONDS,
     MIN_TIMEOUT_SECONDS,
     MIN_UPDATE_INTERVAL_SECONDS,
+    RATED_POWER_OPTIONS,
     DOMAIN,
 )
 from .error import CannotConnect, PairingFailed
@@ -201,6 +204,10 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
             CONF_TIMEOUT,
             self._config_entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS),
         )
+        current_rated_power = self._config_entry.options.get(
+            CONF_RATED_POWER_W,
+            self._config_entry.data.get(CONF_RATED_POWER_W, DEFAULT_RATED_POWER_W),
+        )
 
         if user_input is not None:
             return self.async_create_entry(
@@ -208,6 +215,7 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
                 data={
                     CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
                     CONF_TIMEOUT: user_input[CONF_TIMEOUT],
+                    CONF_RATED_POWER_W: user_input[CONF_RATED_POWER_W],
                 },
             )
 
@@ -218,6 +226,9 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
                 ),
                 vol.Required(CONF_TIMEOUT, default=current_timeout): vol.All(
                     vol.Coerce(int), vol.Range(min=MIN_TIMEOUT_SECONDS)
+                ),
+                vol.Required(CONF_RATED_POWER_W, default=current_rated_power): vol.All(
+                    vol.Coerce(int), vol.In([DEFAULT_RATED_POWER_W] + RATED_POWER_OPTIONS)
                 ),
             }
         )

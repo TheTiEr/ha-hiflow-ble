@@ -15,13 +15,15 @@ from homeassistant.components.number import (
     NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfPower
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_DTU_SERIAL_NUMBER,
     CONF_INVERTERS,
+    CONF_RATED_POWER_W,
+    DEFAULT_RATED_POWER_W,
     DOMAIN,
     HASS_CONFIG_COORDINATOR,
 )
@@ -51,6 +53,16 @@ NUMBERS: tuple[HiFlowNumberEntityDescription, ...] = (
     ),
 )
 
+WATT_NUMBER = HiFlowNumberEntityDescription(
+    key="limit_power_mypower_watt",
+    translation_key="limit_power_mypower_watt",
+    native_unit_of_measurement=UnitOfPower.WATT,
+    native_min_value=0,
+    native_max_value=100,  # overridden per-entry with the rated power
+    native_step=1,
+    mode=NumberMode.SLIDER,
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -63,10 +75,9 @@ async def async_setup_entry(
 
     dtu_sn: str = entry.data[CONF_DTU_SERIAL_NUMBER]
     inverters: list[str] = list(entry.data.get(CONF_INVERTERS, []))
-    # All entities live on the inverter device.
     inverter_sn: str = inverters[0] if inverters else dtu_sn
 
-    entities = [
+    entities: list[NumberEntity] = [
         HiFlowPowerLimitNumber(
             entry,
             dataclasses.replace(desc, serial_number=inverter_sn),
@@ -74,6 +85,25 @@ async def async_setup_entry(
         )
         for desc in NUMBERS
     ]
+
+    rated_power_w: int = entry.options.get(
+        CONF_RATED_POWER_W,
+        entry.data.get(CONF_RATED_POWER_W, DEFAULT_RATED_POWER_W),
+    )
+    if rated_power_w > 0:
+        entities.append(
+            HiFlowPowerLimitWattNumber(
+                entry,
+                dataclasses.replace(
+                    WATT_NUMBER,
+                    serial_number=inverter_sn,
+                    native_max_value=float(rated_power_w),
+                ),
+                coordinator,
+                rated_power_w,
+            )
+        )
+
     async_add_entities(entities)
 
 
@@ -127,3 +157,58 @@ class HiFlowPowerLimitNumber(HiFlowCoordinatorEntity, NumberEntity):
         self._native_value = (
             raw * self._conversion_factor if self._conversion_factor else raw
         )
+
+
+class HiFlowPowerLimitWattNumber(HiFlowCoordinatorEntity, NumberEntity):
+    """Power-limit slider in Watt.
+
+    Converts Watt ↔ percent when reading from / writing to the device.
+    The device stores the limit as tenths of percent (``limit_power_mypower``).
+    """
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        description: HiFlowNumberEntityDescription,
+        coordinator: HiFlowDataUpdateCoordinator,
+        rated_power_w: int,
+    ) -> None:
+        super().__init__(entry, description, coordinator)
+        self._rated_power_w = rated_power_w
+        self._native_value: float | None = None
+        self._assumed_state = False
+        self.update_state_value()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.update_state_value()
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> float | None:
+        return self._native_value
+
+    @property
+    def assumed_state(self) -> bool:
+        return self._assumed_state
+
+    async def async_set_native_value(self, value: float) -> None:
+        percent = round(value / self._rated_power_w * 100)
+        percent = max(0, min(100, percent))
+        hiflow = self.coordinator.get_hiflow()
+        await hiflow.async_set_power_limit(percent)
+        await self.coordinator.async_request_refresh()
+        self._assumed_state = True
+        self._native_value = value
+
+    def update_state_value(self) -> None:
+        data = getattr(self.coordinator, "data", None)
+        if data is None:
+            return
+        # limit_power_mypower is stored in tenths of percent (e.g. 750 = 75.0 %)
+        raw = getattr(data, "limit_power_mypower", None)
+        if raw is None:
+            return
+        self._assumed_state = False
+        percent = raw * 0.1
+        self._native_value = float(round(percent / 100.0 * self._rated_power_w))
