@@ -36,7 +36,7 @@ from .const import (
     DOMAIN,
 )
 from .error import CannotConnect, PairingFailed
-from .util import async_pair_and_probe, derive_sn_from_local_name
+from .util import async_pair_and_probe, derive_sn_from_local_name, detect_rated_power_w
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -208,6 +208,9 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
             CONF_RATED_POWER_W,
             self._config_entry.data.get(CONF_RATED_POWER_W, DEFAULT_RATED_POWER_W),
         )
+        # Auto-detect from serial number prefix when not yet manually configured.
+        if current_rated_power == DEFAULT_RATED_POWER_W:
+            current_rated_power = detect_rated_power_w(self._config_entry)
 
         if user_input is not None:
             return self.async_create_entry(

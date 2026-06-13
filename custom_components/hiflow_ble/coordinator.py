@@ -198,15 +198,3 @@ class HiFlowConfigUpdateCoordinator(HiFlowDataUpdateCoordinator):
         if not response:
             _LOGGER.debug("HiFlow get_config returned nothing")
         return response
-
-
-class HiFlowAppInfoUpdateCoordinator(HiFlowDataUpdateCoordinator):
-    """App-info poller. Useful as a long-running heartbeat."""
-
-    async def _async_update_data(self):
-        if not await self._ensure_connected():
-            return None
-        response = await self._call_with_repair(self._hiflow.async_app_information_data)
-        if not response:
-            _LOGGER.debug("HiFlow app_information_data returned nothing")
-        return response

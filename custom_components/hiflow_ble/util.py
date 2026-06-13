@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import struct
 from typing import Any
 
 from homeassistant.components import bluetooth
@@ -12,10 +13,33 @@ from homeassistant.core import HomeAssistant
 from hiflow_ble.hiflow import HiFlow, generate_ble_id
 from hiflow_ble.hoymiles import generate_inverter_serial_number
 
-from .const import CONF_ENC_RAND, DEFAULT_TIMEOUT_SECONDS
+from .const import (
+    CONF_ENC_RAND,
+    CONF_INVERTERS,
+    DEFAULT_RATED_POWER_W,
+    DEFAULT_TIMEOUT_SECONDS,
+    SERIAL_PREFIX_RATED_POWER,
+)
 from .error import CannotConnect, PairingFailed
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def detect_rated_power_w(config_entry: ConfigEntry) -> int:
+    """Return rated power in Watt detected from the inverter serial number prefix.
+
+    Uses the first 2 bytes of the first inverter serial (big-endian uint16) as
+    a lookup key. Returns DEFAULT_RATED_POWER_W (0) when the model is unknown.
+    """
+    inverters: list[str] = config_entry.data.get(CONF_INVERTERS, [])
+    if not inverters:
+        return DEFAULT_RATED_POWER_W
+    try:
+        serial_bytes = bytes.fromhex(inverters[0])
+        prefix = struct.unpack(">H", serial_bytes[:2])[0]
+        return SERIAL_PREFIX_RATED_POWER.get(prefix, DEFAULT_RATED_POWER_W)
+    except Exception:
+        return DEFAULT_RATED_POWER_W
 
 
 def derive_sn_from_local_name(local_name: str | None) -> str | None:

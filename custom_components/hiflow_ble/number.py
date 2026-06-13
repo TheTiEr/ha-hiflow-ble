@@ -29,6 +29,7 @@ from .const import (
 )
 from .coordinator import HiFlowDataUpdateCoordinator
 from .entity import HiFlowCoordinatorEntity, HiFlowEntityDescription
+from .util import detect_rated_power_w
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +91,8 @@ async def async_setup_entry(
         CONF_RATED_POWER_W,
         entry.data.get(CONF_RATED_POWER_W, DEFAULT_RATED_POWER_W),
     )
+    if rated_power_w == DEFAULT_RATED_POWER_W:
+        rated_power_w = detect_rated_power_w(entry)
     if rated_power_w > 0:
         entities.append(
             HiFlowPowerLimitWattNumber(

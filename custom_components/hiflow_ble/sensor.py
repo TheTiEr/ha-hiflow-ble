@@ -44,7 +44,6 @@ from .const import (
     CONF_INVERTERS,
     CONF_PORTS,
     DOMAIN,
-    HASS_APP_INFO_COORDINATOR,
     HASS_DATA_COORDINATOR,
 )
 from .coordinator import HiFlowDataUpdateCoordinator
@@ -280,23 +279,6 @@ async def async_setup_entry(
             )
         )
 
-    app_info_coordinator: HiFlowDataUpdateCoordinator = stash[HASS_APP_INFO_COORDINATOR]
-    for idx, port in enumerate(ports):
-        entities.append(
-            HiFlowHwPartNumberSensorEntity(
-                config_entry,
-                HiFlowSensorEntityDescription(
-                    key=f"pv_hw_part_number_{idx}",
-                    translation_key="pv_hw_part_number",
-                    entity_category=EntityCategory.DIAGNOSTIC,
-                    serial_number=inverter_sn,
-                    port_number=port["port_number"],
-                ),
-                app_info_coordinator,
-                pv_index=idx,
-            )
-        )
-
     async_add_entities(entities)
 
 
@@ -466,36 +448,6 @@ class HiFlowSumSensorEntity(HiFlowEnergySensorEntity):
                 total += val * factor if factor is not None else val
         self._native_value = None if all_none else total
         self._last_update_state = datetime.now()
-
-
-class HiFlowHwPartNumberSensorEntity(HiFlowCoordinatorEntity, SensorEntity):
-    """Diagnostic sensor exposing the PV hardware part number from AppInfo.
-
-    This value helps build a community lookup table that maps pv_hw_part_number
-    → rated power in Watt. If your inverter is not auto-detected, please report
-    your value at https://github.com/TheTiEr/ha-hiflow-ble/issues.
-    """
-
-    def __init__(
-        self,
-        config_entry: ConfigEntry,
-        description: HiFlowSensorEntityDescription,
-        coordinator: HiFlowDataUpdateCoordinator,
-        pv_index: int,
-    ) -> None:
-        super().__init__(config_entry, description, coordinator)
-        self._pv_index = pv_index
-
-    @property
-    def native_value(self):
-        data = getattr(self.coordinator, "data", None)
-        if data is None or not data.pv_info:
-            return None
-        try:
-            value = data.pv_info[self._pv_index].pv_hw_part_number
-            return value if value else None
-        except IndexError:
-            return None
 
 
 class HiFlowErrorCodeSensorEntity(HiFlowDataSensorEntity):

@@ -23,14 +23,19 @@ CONF_RATED_POWER_W = "rated_power_w"
 DEFAULT_UPDATE_INTERVAL_SECONDS = 30
 DEFAULT_RATED_POWER_W = 0  # 0 = not configured, Watt entity is disabled
 RATED_POWER_OPTIONS = [400, 600, 800, 1000, 1200, 1500, 1600, 2000]
+
+# First 2 bytes of inverter serial number (big-endian uint16) → rated power in Watt.
+# Extend this table as users report new models via GitHub issues.
+SERIAL_PREFIX_RATED_POWER: dict[int, int] = {
+    0x1610: 800,   # HMS-800-2WB  (HiFlow Pro 800)
+    0x1164: 1600,  # HMS-1600-4WB (HiFlow Pro 1600)
+}
 MIN_UPDATE_INTERVAL_SECONDS = 5
 DEFAULT_TIMEOUT_SECONDS = 15
 MIN_TIMEOUT_SECONDS = 5
 DEFAULT_CONFIG_UPDATE_INTERVAL_SECONDS = 60 * 5
-DEFAULT_APP_INFO_UPDATE_INTERVAL_SECONDS = 60 * 60 * 2
 
 # hass.data slot keys
 HASS_DATA_COORDINATOR = "data_coordinator"
 HASS_CONFIG_COORDINATOR = "config_coordinator"
-HASS_APP_INFO_COORDINATOR = "app_info_coordinator"
 HASS_HIFLOW = "hiflow"
