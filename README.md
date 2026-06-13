@@ -11,13 +11,15 @@ This is the BLE-equivalent of
 
 ## Confirmed hardware
 
-| Model | BLE name prefix | Serial prefix | Rated power |
-|---|---|---|---|
-| HMS-800-2WB (HiFlow Pro 800) | `RMI-` | `0x1610` | 800 W |
-| HMS-1600-4WB (HiFlow Pro 1600) | `RMI-` | `0x1164` | 1600 W |
+| Model | BLE name prefix | Serial prefix | Rated power | Notes |
+|---|---|---|---|---|
+| HF-800-WB | `RMI-` | unknown | 800 W | 1 physical MPPT; reports as 2 mirrored PV ports. Confirmed by [hiflow-ble#2](https://github.com/TheTiEr/hiflow-ble/issues/2). |
+| HMS-800-2WB (HiFlow Pro 800) | `RMI-` | `0x1610` | 800 W | 2 MPPT inputs |
+| HMS-1600-4WB (HiFlow Pro 1600) | `RMI-` | `0x1164` | 1600 W | 4 MPPT inputs |
 
-Other HMS-WB models likely work. If yours does, open an issue with the model
-name and inverter serial prefix (first 4 hex chars) so we can extend the table.
+Other HMS-WB / HF-WB models likely work. If yours does, open an issue with the
+model name and inverter serial prefix (first 4 hex chars) so we can extend the
+auto-detection table.
 
 ---
 
@@ -178,10 +180,11 @@ It can change after a factory reset or firmware update. If you see persistent
 decryption errors in the log (`GCM tag mismatch`), delete and re-add the
 integration to trigger a fresh pairing.
 
-**Port error code at night**
-`pv_data.error_code = 0x03000000` (decimal 50331648) is the normal status when
-the inverter has no DC input — night-time, heavy cloud cover, or disconnected
-panels. It is not a hardware fault.
+**Port error code `0x03000000`**
+`pv_data.error_code = 0x03000000` (decimal 50331648) appears on some models
+(confirmed on HF-800-WB) even during active power production — it is not a
+hardware fault. The exact meaning is device-firmware-specific and not publicly
+documented by Hoymiles.
 
 **First poll delay**
 The power-limit config coordinator polls every 5 minutes. The Watt/percent
