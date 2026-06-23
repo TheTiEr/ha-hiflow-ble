@@ -34,8 +34,10 @@ MIN_UPDATE_INTERVAL_SECONDS = 5
 DEFAULT_TIMEOUT_SECONDS = 15
 MIN_TIMEOUT_SECONDS = 5
 DEFAULT_CONFIG_UPDATE_INTERVAL_SECONDS = 60 * 5
+DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 45  # shorter than the ~90 s inverter idle timeout
 
 # hass.data slot keys
 HASS_DATA_COORDINATOR = "data_coordinator"
 HASS_CONFIG_COORDINATOR = "config_coordinator"
+HASS_HEARTBEAT_COORDINATOR = "heartbeat_coordinator"
 HASS_HIFLOW = "hiflow"
