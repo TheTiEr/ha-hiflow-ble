@@ -20,6 +20,9 @@ CONF_UPDATE_INTERVAL = "update_interval"
 CONF_TIMEOUT = "timeout"
 CONF_RATED_POWER_W = "rated_power_w"
 
+# Sentinel used in the discovery dropdown to trigger manual MAC/serial entry.
+MANUAL_ENTRY = "__manual__"
+
 DEFAULT_UPDATE_INTERVAL_SECONDS = 30
 DEFAULT_RATED_POWER_W = 0  # 0 = not configured, Watt entity is disabled
 RATED_POWER_OPTIONS = [400, 600, 800, 1000, 1200, 1500, 1600, 2000]

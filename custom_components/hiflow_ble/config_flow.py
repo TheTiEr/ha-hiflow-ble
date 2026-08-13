@@ -25,6 +25,7 @@ from .const import (
     CONF_RATED_POWER_W,
     CONF_SN,
     CONF_TIMEOUT,
+    MANUAL_ENTRY,
     CONF_UPDATE_INTERVAL,
     CONFIG_VERSION,
     DEFAULT_RATED_POWER_W,
@@ -82,7 +83,7 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manual fallback when no discovery is available."""
+        """Pick a discovered device, or fall back to manual entry."""
         errors: dict[str, str] = {}
 
         current_addresses = self._async_current_ids()
@@ -94,24 +95,74 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                 continue
             seen.append((info.address, info.name))
 
-        if user_input is not None:
-            self._address = user_input[CONF_ADDRESS]
-            for addr, name in seen:
-                if addr == self._address:
-                    self._local_name = name
-                    break
-            self._sn = derive_sn_from_local_name(self._local_name)
-            await self.async_set_unique_id(self._address)
-            self._abort_if_unique_id_configured()
-            return await self.async_step_pair()
-
+        # No HiFlow device advertises a usable local name (e.g. an ESPHome proxy
+        # strips it, see issue #13) — go straight to manual entry rather than
+        # dead-ending on a form with no selectable options.
         if not seen:
-            return self.async_show_form(step_id="user", errors={"base": "no_devices"})
+            return await self.async_step_manual()
+
+        if user_input is not None:
+            address = user_input.get(CONF_ADDRESS)
+            if address == MANUAL_ENTRY:
+                return await self.async_step_manual()
+            if not address:
+                errors["base"] = "no_devices"
+            else:
+                self._address = address
+                for addr, name in seen:
+                    if addr == address:
+                        self._local_name = name
+                        break
+                self._sn = derive_sn_from_local_name(self._local_name)
+                await self.async_set_unique_id(self._address)
+                self._abort_if_unique_id_configured()
+                return await self.async_step_pair()
 
         options = {addr: name for addr, name in seen}
+        options[MANUAL_ENTRY] = "Enter address manually…"
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(options)}),
+            errors=errors,
+        )
+
+    # ----- Manual entry for devices that advertise no local name -----
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter the BLE MAC and serial by hand.
+
+        Needed when the advertisement carries no local name — some BLE proxies
+        strip it, so the serial can't be derived automatically (issue #13).
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._address = (user_input.get(CONF_ADDRESS) or "").strip().upper()
+            raw_sn = (user_input.get(CONF_SN) or "").strip()
+            # Accept either a full BLE name (RMI-XXXX…) or the bare serial tail.
+            self._sn = derive_sn_from_local_name(raw_sn) or (
+                raw_sn.upper()[-12:] if raw_sn else None
+            )
+            self._local_name = raw_sn or None
+            if not self._address:
+                errors[CONF_ADDRESS] = "invalid_address"
+            elif not self._sn:
+                errors[CONF_SN] = "invalid_serial"
+            else:
+                await self.async_set_unique_id(self._address)
+                self._abort_if_unique_id_configured()
+                return await self.async_step_pair()
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): str,
+                    vol.Required(CONF_SN): str,
+                }
+            ),
             errors=errors,
         )
 
