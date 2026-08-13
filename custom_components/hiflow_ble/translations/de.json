@@ -6,12 +6,14 @@
         "data": {
           "update_interval": "Abfrageintervall (Sekunden)",
           "timeout": "BLE-Anfrage-Timeout (Sekunden)",
-          "rated_power_w": "Nennleistung des Wechselrichters (W)"
+          "rated_power_w": "Nennleistung des Wechselrichters (W)",
+          "ble_pin": "BLE-PIN"
         },
         "data_description": {
           "update_interval": "Wie oft Home Assistant den Wechselrichter nach Leistungsdaten abfragt. Niedrigere Werte geben schnellere Aktualisierungen, beanspruchen aber die BLE-Verbindung stärker. Minimum: 5 s.",
           "timeout": "Maximale Wartezeit auf eine BLE-Antwort, bevor die Anfrage als fehlgeschlagen gilt. Minimum: 5 s.",
-          "rated_power_w": "Nennleistung deines Wechselrichters in Watt (z. B. 800 für den HiFlow 800). 0 = Watt-Regler deaktiviert. Falls dein Modell nicht automatisch erkannt wird, bitte das Seriennummern-Präfix des Wechselrichters im GitHub-Issue-Tracker melden."
+          "rated_power_w": "Nennleistung deines Wechselrichters in Watt (z. B. 800 für den HiFlow 800). 0 = Watt-Regler deaktiviert. Falls dein Modell nicht automatisch erkannt wird, bitte das Seriennummern-Präfix des Wechselrichters im GitHub-Issue-Tracker melden.",
+          "ble_pin": "Der in der S-Miles-App gesetzte BLE-PIN. Hier aktualisieren, wenn du ihn in der App änderst; wird beim nächsten Reconnect bzw. erneuten Koppeln wirksam."
         }
       }
     }
@@ -21,9 +23,17 @@
     "step": {
       "user": {
         "title": "HiFlow-Wechselrichter hinzufügen",
-        "description": "Wähle ein gefundenes RMI-* Gerät. Stelle sicher, dass die S-Miles-App nicht verbunden ist.",
+        "description": "Wähle ein gefundenes RMI-* Gerät oder „Adresse manuell eingeben…“, falls dein Wechselrichter nicht aufgeführt ist. Stelle sicher, dass die S-Miles-App nicht verbunden ist.",
         "data": {
           "address": "Bluetooth-Gerät"
+        }
+      },
+      "manual": {
+        "title": "HiFlow-Wechselrichter manuell hinzufügen",
+        "description": "Gib die Bluetooth-MAC-Adresse und die Seriennummer des Wechselrichters ein. Nutze dies, wenn das Gerät nur über einen Bluetooth-Proxy erreichbar ist, der den angekündigten Namen nicht weiterleitet.",
+        "data": {
+          "address": "Bluetooth-MAC-Adresse (z. B. 80:9D:65:24:DB:F3)",
+          "sn": "Seriennummer oder BLE-Name (z. B. RMI-4161A38A)"
         }
       },
       "pair": {
@@ -38,6 +48,8 @@
       "cannot_connect": "Bluetooth-Verbindung fehlgeschlagen. Ist der Wechselrichter in Reichweite?",
       "pairing_failed": "Pairing-Handshake fehlgeschlagen. Schließe die S-Miles-App und versuche es erneut.",
       "no_devices": "Keine HiFlow-Geräte gefunden. Ist Bluetooth aktiviert und der Wechselrichter in Reichweite?",
+      "invalid_address": "Gib eine gültige Bluetooth-MAC-Adresse ein.",
+      "invalid_serial": "Gib eine gültige Seriennummer oder einen RMI-*-BLE-Namen ein.",
       "not_connectable": "Dieses Gerät ist nur über passive Proxys sichtbar (z. B. Shelly Gen2). Für das Pairing wird ein AKTIVER, verbindungsfähiger Proxy benötigt: ESPHome-BLE-Proxy mit `bluetooth_proxy: active: true` in Reichweite des Wechselrichters, oder ein USB-BLE-Stick am Home-Assistant-Host."
     },
     "abort": {

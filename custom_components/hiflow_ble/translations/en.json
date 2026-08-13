@@ -6,12 +6,14 @@
         "data": {
           "update_interval": "Polling interval (seconds)",
           "timeout": "BLE request timeout (seconds)",
-          "rated_power_w": "Inverter rated power (W)"
+          "rated_power_w": "Inverter rated power (W)",
+          "ble_pin": "BLE PIN"
         },
         "data_description": {
           "update_interval": "How often Home Assistant polls the inverter for power data. Lower values give faster updates but keep the BLE link busy. Minimum: 5 s.",
           "timeout": "Maximum time to wait for a BLE response before marking the request as failed. Minimum: 5 s.",
-          "rated_power_w": "Rated peak output power of your inverter in Watt (e.g. 800 for HiFlow 800). Set to 0 to disable the Watt-based power limit slider. If your model is not auto-detected, report your inverter serial number prefix at the GitHub issue tracker."
+          "rated_power_w": "Rated peak output power of your inverter in Watt (e.g. 800 for HiFlow 800). Set to 0 to disable the Watt-based power limit slider. If your model is not auto-detected, report your inverter serial number prefix at the GitHub issue tracker.",
+          "ble_pin": "The BLE PIN set in the S-Miles app. Update this here if you change it in the app; it takes effect on the next reconnect or re-pair."
         }
       }
     }
@@ -21,9 +23,17 @@
     "step": {
       "user": {
         "title": "Add HiFlow inverter",
-        "description": "Pick a discovered RMI-* device. Make sure the S-Miles app is not connected.",
+        "description": "Pick a discovered RMI-* device, or choose \"Enter address manually…\" if your inverter is not listed. Make sure the S-Miles app is not connected.",
         "data": {
           "address": "Bluetooth device"
+        }
+      },
+      "manual": {
+        "title": "Add HiFlow inverter manually",
+        "description": "Enter the inverter's Bluetooth MAC address and serial number. Use this when the device is reachable only through a Bluetooth proxy that does not forward the advertised name.",
+        "data": {
+          "address": "Bluetooth MAC address (e.g. 80:9D:65:24:DB:F3)",
+          "sn": "Serial number or BLE name (e.g. RMI-4161A38A)"
         }
       },
       "pair": {
@@ -38,6 +48,8 @@
       "cannot_connect": "Bluetooth connection failed. Is the inverter in range?",
       "pairing_failed": "Pairing handshake failed. Close the S-Miles app and try again.",
       "no_devices": "No HiFlow devices discovered. Make sure Bluetooth is enabled and the inverter is in range.",
+      "invalid_address": "Enter a valid Bluetooth MAC address.",
+      "invalid_serial": "Enter a valid serial number or RMI-* BLE name.",
       "not_connectable": "This device is only visible via passive proxies (e.g. Shelly Gen2). Pairing requires an ACTIVE, connectable proxy: use an ESPHome BLE proxy with `bluetooth_proxy: active: true` in range of the inverter, or attach a USB BLE dongle to the Home Assistant host."
     },
     "abort": {

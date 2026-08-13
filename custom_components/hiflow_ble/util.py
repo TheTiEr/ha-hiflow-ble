@@ -16,8 +16,10 @@ from hiflow_ble.hoymiles import generate_inverter_serial_number
 from .const import (
     CONF_ENC_RAND,
     CONF_INVERTERS,
+    CONF_SN,
     DEFAULT_RATED_POWER_W,
     DEFAULT_TIMEOUT_SECONDS,
+    NAME_PREFIX_RATED_POWER,
     SERIAL_PREFIX_RATED_POWER,
 )
 from .error import CannotConnect, PairingFailed
@@ -26,11 +28,19 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def detect_rated_power_w(config_entry: ConfigEntry) -> int:
-    """Return rated power in Watt detected from the inverter serial number prefix.
+    """Return rated power in Watt detected from the inverter serial number.
 
-    Uses the first 2 bytes of the first inverter serial (big-endian uint16) as
-    a lookup key. Returns DEFAULT_RATED_POWER_W (0) when the model is unknown.
+    The BLE-advertised serial prefix (``CONF_SN`` / RMI-XXXX name) is checked
+    first because it distinguishes models that share an inverter-serial prefix
+    (e.g. HMS-1000-2WB vs HMS-800-2WB, both 0x1610 — see issue #16). Falls back
+    to the first 2 bytes of the first inverter serial (big-endian uint16).
+    Returns DEFAULT_RATED_POWER_W (0) when the model is unknown.
     """
+    sn = (config_entry.data.get(CONF_SN) or "")
+    watt = NAME_PREFIX_RATED_POWER.get(sn[:4].upper())
+    if watt:
+        return watt
+
     inverters: list[str] = config_entry.data.get(CONF_INVERTERS, [])
     if not inverters:
         return DEFAULT_RATED_POWER_W

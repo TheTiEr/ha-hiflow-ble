@@ -26,6 +26,7 @@ from .const import (
     CONF_RATED_POWER_W,
     CONF_SN,
     CONF_TIMEOUT,
+    MANUAL_ENTRY,
     CONF_UPDATE_INTERVAL,
     CONFIG_VERSION,
     DEFAULT_RATED_POWER_W,
@@ -83,7 +84,7 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manual fallback when no discovery is available."""
+        """Pick a discovered device, or fall back to manual entry."""
         errors: dict[str, str] = {}
 
         current_addresses = self._async_current_ids()
@@ -100,7 +101,12 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
             seen.append((info.address, info.name))
 
         if user_input is not None and CONF_ADDRESS in user_input:
-            self._address = user_input[CONF_ADDRESS]
+            address = user_input[CONF_ADDRESS]
+            # Manual entry — for devices whose advert carries no local name
+            # (some BLE proxies strip it, see issue #13).
+            if address == MANUAL_ENTRY:
+                return await self.async_step_manual()
+            self._address = address
             for addr, name in seen:
                 if addr == self._address:
                     self._local_name = name
@@ -130,13 +136,57 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._abort_if_unique_id_configured()
                 return await self.async_step_pair()
 
+        # Nothing discovered with a usable local name (e.g. an ESPHome proxy
+        # strips it, see issue #13) — offer manual entry rather than
+        # dead-ending on an empty picker.
         if not seen:
-            return self.async_show_form(step_id="user", errors={"base": "no_devices"})
+            return await self.async_step_manual()
 
         options = {addr: name for addr, name in seen}
+        options[MANUAL_ENTRY] = "Enter address manually…"
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(options)}),
+            errors=errors,
+        )
+
+    # ----- Manual entry for devices that advertise no local name -----
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter the BLE MAC and serial by hand.
+
+        Needed when the advertisement carries no local name — some BLE proxies
+        strip it, so the serial can't be derived automatically (issue #13).
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._address = (user_input.get(CONF_ADDRESS) or "").strip().upper()
+            raw_sn = (user_input.get(CONF_SN) or "").strip()
+            # Accept either a full BLE name (RMI-XXXX…) or the bare serial tail.
+            self._sn = derive_sn_from_local_name(raw_sn) or (
+                raw_sn.upper()[-12:] if raw_sn else None
+            )
+            self._local_name = raw_sn or None
+            if not self._address:
+                errors[CONF_ADDRESS] = "invalid_address"
+            elif not self._sn:
+                errors[CONF_SN] = "invalid_serial"
+            else:
+                await self.async_set_unique_id(self._address)
+                self._abort_if_unique_id_configured()
+                return await self.async_step_pair()
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): str,
+                    vol.Required(CONF_SN): str,
+                }
+            ),
             errors=errors,
         )
 
@@ -236,6 +286,10 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
         # Auto-detect from serial number prefix when not yet manually configured.
         if current_rated_power == DEFAULT_RATED_POWER_W:
             current_rated_power = detect_rated_power_w(self._config_entry)
+        current_pin = self._config_entry.options.get(
+            CONF_BLE_PIN,
+            self._config_entry.data.get(CONF_BLE_PIN, ""),
+        )
 
         if user_input is not None:
             return self.async_create_entry(
@@ -244,6 +298,7 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
                     CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
                     CONF_TIMEOUT: user_input[CONF_TIMEOUT],
                     CONF_RATED_POWER_W: user_input[CONF_RATED_POWER_W],
+                    CONF_BLE_PIN: user_input.get(CONF_BLE_PIN, current_pin),
                 },
             )
 
@@ -258,6 +313,9 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
                 vol.Required(CONF_RATED_POWER_W, default=current_rated_power): vol.All(
                     vol.Coerce(int), vol.In([DEFAULT_RATED_POWER_W] + RATED_POWER_OPTIONS)
                 ),
+                # Editable so the PIN can be updated when it's changed in the
+                # S-Miles app. Takes effect on the next reconnect/re-pair.
+                vol.Optional(CONF_BLE_PIN, default=current_pin): str,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

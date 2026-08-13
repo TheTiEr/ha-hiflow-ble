@@ -14,7 +14,9 @@ This is the BLE-equivalent of
 | Model | BLE name prefix | Serial prefix | Rated power | Notes |
 |---|---|---|---|---|
 | HF-800-WB | `RMI-` | unknown | 800 W | 1 physical MPPT; reports as 2 mirrored PV ports. Confirmed by [hiflow-ble#2](https://github.com/TheTiEr/hiflow-ble/issues/2). |
+| HiFlow 800 | `RMI-1650` | `0x1610` | 800 W | Detected by BLE name prefix `1650` ([#11](https://github.com/TheTiEr/ha-hiflow-ble/issues/11)). |
 | HMS-800-2WB (HiFlow Pro 800) | `RMI-` | `0x1610` | 800 W | 2 MPPT inputs |
+| HMS-1000-2WB | `RMI-4161` | `0x1610` | 1000 W | Shares the 800 W inverter-serial prefix; detected by BLE name prefix `4161` ([#16](https://github.com/TheTiEr/ha-hiflow-ble/issues/16)). |
 | HMS-1600-4WB (HiFlow Pro 1600) | `RMI-` | `0x1164` | 1600 W | 4 MPPT inputs |
 
 Other HMS-WB / HF-WB models likely work. If yours does, open an issue with the
@@ -272,8 +274,21 @@ subsequent reconnects skip the PIN step.
 
 ### Serial number prefix → model
 
-The first two bytes of the inverter serial (big-endian uint16) identify the
-model:
+Rated power is auto-detected in two steps (see `detect_rated_power_w` in
+`util.py`). First the BLE-advertised serial prefix — the first four chars of the
+`RMI-XXXX…` name (`NAME_PREFIX_RATED_POWER`) — is looked up, because some models
+share an inverter-serial prefix but differ in rated power. If that misses, the
+first two bytes of the inverter serial (big-endian uint16,
+`SERIAL_PREFIX_RATED_POWER`) are used.
+
+BLE name prefix (`RMI-XXXX`):
+
+| Name prefix | Model | Rated power |
+|---|---|---|
+| `1650` | HiFlow 800 | 800 W |
+| `4161` | HMS-1000-2WB | 1000 W |
+
+Inverter-serial prefix (fallback):
 
 | Prefix | Model | Type | Rated power |
 |---|---|---|---|
