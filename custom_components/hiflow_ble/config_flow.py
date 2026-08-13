@@ -9,6 +9,7 @@ import voluptuous as vol
 
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
+    async_ble_device_from_address,
     async_discovered_service_info,
 )
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
@@ -86,24 +87,48 @@ class HiFlowBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         current_addresses = self._async_current_ids()
+        # Include non-connectable scanners so the picker isn't misleadingly
+        # empty when only passive proxies (e.g. Shelly Gen2) are in range.
+        # We validate connectability separately once the user has picked a
+        # device and can show a targeted error instead of hiding the device.
         seen: list[tuple[str, str]] = []
-        for info in async_discovered_service_info(self.hass):
+        for info in async_discovered_service_info(self.hass, connectable=False):
             if info.address in current_addresses:
                 continue
             if not derive_sn_from_local_name(info.name):
                 continue
             seen.append((info.address, info.name))
 
-        if user_input is not None:
+        if user_input is not None and CONF_ADDRESS in user_input:
             self._address = user_input[CONF_ADDRESS]
             for addr, name in seen:
                 if addr == self._address:
                     self._local_name = name
                     break
-            self._sn = derive_sn_from_local_name(self._local_name)
-            await self.async_set_unique_id(self._address)
-            self._abort_if_unique_id_configured()
-            return await self.async_step_pair()
+            # Require a connectable path to the selected device. BLE pairing
+            # needs a real GATT connection; passive-only scanners (Shelly
+            # Gen2, some ESPHome BLE proxies without `active: true`) can see
+            # the advert but cannot establish a link.
+            if (
+                async_ble_device_from_address(
+                    self.hass, self._address, connectable=True
+                )
+                is None
+            ):
+                _LOGGER.warning(
+                    "No connectable Bluetooth adapter/proxy can reach %s (%s). "
+                    "Add an ESPHome BLE proxy with `bluetooth_proxy: active: true` "
+                    "in range of the inverter, or attach a USB BLE dongle to the "
+                    "Home Assistant host.",
+                    self._local_name or self._address,
+                    self._address,
+                )
+                errors["base"] = "not_connectable"
+            else:
+                self._sn = derive_sn_from_local_name(self._local_name)
+                await self.async_set_unique_id(self._address)
+                self._abort_if_unique_id_configured()
+                return await self.async_step_pair()
 
         if not seen:
             return self.async_show_form(step_id="user", errors={"base": "no_devices"})
