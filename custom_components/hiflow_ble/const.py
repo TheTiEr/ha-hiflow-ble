@@ -27,7 +27,19 @@ DEFAULT_UPDATE_INTERVAL_SECONDS = 30
 DEFAULT_RATED_POWER_W = 0  # 0 = not configured, Watt entity is disabled
 RATED_POWER_OPTIONS = [400, 600, 800, 1000, 1200, 1500, 1600, 2000]
 
+# First 4 chars of the BLE-advertised serial (the RMI-XXXX… local name / CONF_SN)
+# → rated power in Watt. This is checked *before* SERIAL_PREFIX_RATED_POWER
+# because some models share an inverter-serial prefix but differ in rated power
+# (e.g. the HMS-1000-2WB reports inverter-serial prefix 0x1610 like the 800 W
+# model, so it can only be told apart by its RMI name prefix — see issue #16).
+# Keys are uppercase. Extend as users report new models via GitHub issues.
+NAME_PREFIX_RATED_POWER: dict[str, int] = {
+    "1650": 800,   # HiFlow 800    (issue #11)
+    "4161": 1000,  # HMS-1000-2WB  (issue #16)
+}
+
 # First 2 bytes of inverter serial number (big-endian uint16) → rated power in Watt.
+# Used as a fallback when the BLE name prefix is unknown.
 # Extend this table as users report new models via GitHub issues.
 SERIAL_PREFIX_RATED_POWER: dict[int, int] = {
     0x1610: 800,   # HMS-800-2WB  (HiFlow Pro 800)
