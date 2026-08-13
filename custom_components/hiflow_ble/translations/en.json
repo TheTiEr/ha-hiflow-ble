@@ -49,7 +49,8 @@
       "pairing_failed": "Pairing handshake failed. Close the S-Miles app and try again.",
       "no_devices": "No HiFlow devices discovered. Make sure Bluetooth is enabled and the inverter is in range.",
       "invalid_address": "Enter a valid Bluetooth MAC address.",
-      "invalid_serial": "Enter a valid serial number or RMI-* BLE name."
+      "invalid_serial": "Enter a valid serial number or RMI-* BLE name.",
+      "not_connectable": "This device is only visible via passive proxies (e.g. Shelly Gen2). Pairing requires an ACTIVE, connectable proxy: use an ESPHome BLE proxy with `bluetooth_proxy: active: true` in range of the inverter, or attach a USB BLE dongle to the Home Assistant host."
     },
     "abort": {
       "already_configured": "Already configured.",

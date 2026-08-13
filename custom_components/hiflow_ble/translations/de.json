@@ -49,7 +49,8 @@
       "pairing_failed": "Pairing-Handshake fehlgeschlagen. Schließe die S-Miles-App und versuche es erneut.",
       "no_devices": "Keine HiFlow-Geräte gefunden. Ist Bluetooth aktiviert und der Wechselrichter in Reichweite?",
       "invalid_address": "Gib eine gültige Bluetooth-MAC-Adresse ein.",
-      "invalid_serial": "Gib eine gültige Seriennummer oder einen RMI-*-BLE-Namen ein."
+      "invalid_serial": "Gib eine gültige Seriennummer oder einen RMI-*-BLE-Namen ein.",
+      "not_connectable": "Dieses Gerät ist nur über passive Proxys sichtbar (z. B. Shelly Gen2). Für das Pairing wird ein AKTIVER, verbindungsfähiger Proxy benötigt: ESPHome-BLE-Proxy mit `bluetooth_proxy: active: true` in Reichweite des Wechselrichters, oder ein USB-BLE-Stick am Home-Assistant-Host."
     },
     "abort": {
       "already_configured": "Bereits konfiguriert.",
