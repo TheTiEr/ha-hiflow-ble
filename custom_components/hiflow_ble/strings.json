@@ -6,12 +6,14 @@
         "data": {
           "update_interval": "Polling interval (seconds)",
           "timeout": "BLE request timeout (seconds)",
-          "rated_power_w": "Inverter rated power (W)"
+          "rated_power_w": "Inverter rated power (W)",
+          "ble_pin": "BLE PIN"
         },
         "data_description": {
           "update_interval": "How often Home Assistant polls the inverter for power data. Lower values give faster updates but keep the BLE link busy. Minimum: 5 s.",
           "timeout": "Maximum time to wait for a BLE response before marking the request as failed. Minimum: 5 s.",
-          "rated_power_w": "Rated peak output power of your inverter in Watt (e.g. 800 for HiFlow 800). Set to 0 to disable the Watt-based power limit slider. If your model is not auto-detected, report your inverter serial number prefix at the GitHub issue tracker."
+          "rated_power_w": "Rated peak output power of your inverter in Watt (e.g. 800 for HiFlow 800). Set to 0 to disable the Watt-based power limit slider. If your model is not auto-detected, report your inverter serial number prefix at the GitHub issue tracker.",
+          "ble_pin": "The BLE PIN set in the S-Miles app. Update this here if you change it in the app; it takes effect on the next reconnect or re-pair."
         }
       }
     }

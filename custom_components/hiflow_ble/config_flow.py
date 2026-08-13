@@ -262,6 +262,10 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
         # Auto-detect from serial number prefix when not yet manually configured.
         if current_rated_power == DEFAULT_RATED_POWER_W:
             current_rated_power = detect_rated_power_w(self._config_entry)
+        current_pin = self._config_entry.options.get(
+            CONF_BLE_PIN,
+            self._config_entry.data.get(CONF_BLE_PIN, ""),
+        )
 
         if user_input is not None:
             return self.async_create_entry(
@@ -270,6 +274,7 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
                     CONF_UPDATE_INTERVAL: user_input[CONF_UPDATE_INTERVAL],
                     CONF_TIMEOUT: user_input[CONF_TIMEOUT],
                     CONF_RATED_POWER_W: user_input[CONF_RATED_POWER_W],
+                    CONF_BLE_PIN: user_input.get(CONF_BLE_PIN, current_pin),
                 },
             )
 
@@ -284,6 +289,9 @@ class HiFlowBLEOptionsFlow(OptionsFlow):
                 vol.Required(CONF_RATED_POWER_W, default=current_rated_power): vol.All(
                     vol.Coerce(int), vol.In([DEFAULT_RATED_POWER_W] + RATED_POWER_OPTIONS)
                 ),
+                # Editable so the PIN can be updated when it's changed in the
+                # S-Miles app. Takes effect on the next reconnect/re-pair.
+                vol.Optional(CONF_BLE_PIN, default=current_pin): str,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

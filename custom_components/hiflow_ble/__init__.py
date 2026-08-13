@@ -54,7 +54,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     enc_rand_hex: str = entry.data[CONF_ENC_RAND]
     sn: str = entry.data[CONF_SN]
     ble_id: str = entry.data.get(CONF_BLE_ID, "")
-    pin: str = entry.data.get(CONF_BLE_PIN, "")
+    # Options (set via gear icon) take priority so the PIN can be updated after
+    # setup — e.g. when the user changes the BLE PIN in the S-Miles app.
+    pin: str = entry.options.get(
+        CONF_BLE_PIN, entry.data.get(CONF_BLE_PIN, "")
+    )
     # Options (set via gear icon) take priority over legacy data values.
     timeout = entry.options.get(
         CONF_TIMEOUT, entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT_SECONDS)

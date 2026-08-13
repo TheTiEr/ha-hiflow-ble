@@ -6,12 +6,14 @@
         "data": {
           "update_interval": "Abfrageintervall (Sekunden)",
           "timeout": "BLE-Anfrage-Timeout (Sekunden)",
-          "rated_power_w": "Nennleistung des Wechselrichters (W)"
+          "rated_power_w": "Nennleistung des Wechselrichters (W)",
+          "ble_pin": "BLE-PIN"
         },
         "data_description": {
           "update_interval": "Wie oft Home Assistant den Wechselrichter nach Leistungsdaten abfragt. Niedrigere Werte geben schnellere Aktualisierungen, beanspruchen aber die BLE-Verbindung stärker. Minimum: 5 s.",
           "timeout": "Maximale Wartezeit auf eine BLE-Antwort, bevor die Anfrage als fehlgeschlagen gilt. Minimum: 5 s.",
-          "rated_power_w": "Nennleistung deines Wechselrichters in Watt (z. B. 800 für den HiFlow 800). 0 = Watt-Regler deaktiviert. Falls dein Modell nicht automatisch erkannt wird, bitte das Seriennummern-Präfix des Wechselrichters im GitHub-Issue-Tracker melden."
+          "rated_power_w": "Nennleistung deines Wechselrichters in Watt (z. B. 800 für den HiFlow 800). 0 = Watt-Regler deaktiviert. Falls dein Modell nicht automatisch erkannt wird, bitte das Seriennummern-Präfix des Wechselrichters im GitHub-Issue-Tracker melden.",
+          "ble_pin": "Der in der S-Miles-App gesetzte BLE-PIN. Hier aktualisieren, wenn du ihn in der App änderst; wird beim nächsten Reconnect bzw. erneuten Koppeln wirksam."
         }
       }
     }
