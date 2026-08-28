@@ -32,7 +32,7 @@ from hiflow_ble.errors import BleLinkError, EncRandStale
 from hiflow_ble.hiflow import HiFlow
 
 from .const import CONF_ADDRESS, DOMAIN
-from .util import async_check_and_update_enc_rand
+from .util import async_check_and_update_enc_rand, current_tz_offset_seconds
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +133,9 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
         if not self._hiflow._handshake_done:
             ok = False
             try:
-                ok = await self._hiflow.async_do_comm_cmd_handshake()
+                ok = await self._hiflow.async_do_comm_cmd_handshake(
+                    tz_offset=current_tz_offset_seconds()
+                )
             except Exception as err:
                 _LOGGER.warning("CommCmd handshake raised: %s", err)
             if not ok:
@@ -148,7 +150,9 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
                     await async_check_and_update_enc_rand(
                         self.hass, self._config_entry, self._hiflow, new_key.hex()
                     )
-                    ok = await self._hiflow.async_do_comm_cmd_handshake()
+                    ok = await self._hiflow.async_do_comm_cmd_handshake(
+                        tz_offset=current_tz_offset_seconds()
+                    )
                     if ok:
                         _LOGGER.warning("V0 re-pair succeeded — encRand refreshed")
                     else:

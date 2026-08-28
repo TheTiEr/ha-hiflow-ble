@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from hiflow_ble.hiflow import HiFlow, generate_ble_id
 from hiflow_ble.hoymiles import generate_inverter_serial_number
@@ -25,6 +26,17 @@ from .const import (
 from .error import CannotConnect, PairingFailed
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def current_tz_offset_seconds() -> int:
+    """Return Home Assistant's configured UTC offset in seconds.
+
+    Read on every call so a daylight-saving transition is picked up without a
+    restart, and taken from HA's own timezone rather than the host's — the two
+    can differ, and the inverter should follow the one the user configured.
+    """
+    offset = dt_util.now().utcoffset()
+    return int(offset.total_seconds()) if offset is not None else 0
 
 
 def detect_rated_power_w(config_entry: ConfigEntry) -> int:
@@ -127,7 +139,9 @@ async def async_pair_and_probe(
 
         # CommCmd handshake: login (action=64) + optional PIN (action=82) + time-sync (action=104).
         # The device won't answer V1 RealData requests until this succeeds.
-        ok = await hiflow.async_do_comm_cmd_handshake(ble_id=ble_id, pin=pin)
+        ok = await hiflow.async_do_comm_cmd_handshake(
+            ble_id=ble_id, pin=pin, tz_offset=current_tz_offset_seconds()
+        )
         if not ok:
             _LOGGER.warning(
                 "CommCmd handshake failed for %s — bleId not accepted. "
