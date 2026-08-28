@@ -29,6 +29,7 @@ from .const import (
     HASS_DATA_COORDINATOR,
     HASS_HEARTBEAT_COORDINATOR,
     HASS_HIFLOW,
+    HASS_OPTIONS_SNAPSHOT,
 )
 from .coordinator import (
     HiFlowConfigUpdateCoordinator,
@@ -97,6 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         HASS_DATA_COORDINATOR: data_coordinator,
         HASS_CONFIG_COORDINATOR: config_coordinator,
         HASS_HEARTBEAT_COORDINATOR: heartbeat_coordinator,
+        HASS_OPTIONS_SNAPSHOT: dict(entry.options),
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -126,7 +128,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_reload_on_options_change(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> None:
-    """Reload the config entry so new options (e.g. polling interval) take effect."""
+    """Reload the config entry when the user saved new options.
+
+    Home Assistant runs update listeners on *every* config-entry change, not
+    just option changes. This integration rewrites ``entry.data`` whenever the
+    device hands out a fresh ``encRand`` during a V0 re-pair, so an unguarded
+    reload here turns each key rotation into a full teardown and setup while
+    the in-memory client already holds the new key.
+
+    Comparing against the snapshot taken at setup keeps reloads to actual
+    option changes.
+    """
+    stash = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if stash is not None and stash.get(HASS_OPTIONS_SNAPSHOT) == dict(entry.options):
+        _LOGGER.debug("Config entry data changed, options unchanged — no reload")
+        return
     await hass.config_entries.async_reload(entry.entry_id)
 
 

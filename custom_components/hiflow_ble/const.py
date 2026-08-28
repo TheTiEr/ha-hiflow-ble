@@ -56,3 +56,7 @@ HASS_DATA_COORDINATOR = "data_coordinator"
 HASS_CONFIG_COORDINATOR = "config_coordinator"
 HASS_HEARTBEAT_COORDINATOR = "heartbeat_coordinator"
 HASS_HIFLOW = "hiflow"
+# Snapshot of entry.options taken at setup. The update listener compares
+# against it so that writes to entry.data (the rotating encRand) do not
+# trigger a reload — see _async_reload_on_options_change.
+HASS_OPTIONS_SNAPSHOT = "options_snapshot"
