@@ -108,15 +108,16 @@ class HiFlowDataUpdateCoordinator(DataUpdateCoordinator):
                 self._config_entry.data[CONF_ADDRESS],
                 connectable=True,
             )
-            if fresh is not None:
-                self._hiflow.address = fresh
-            else:
-                _LOGGER.debug(
-                    "HiFlow: no connectable BLEDevice found for %s — "
-                    "reconnect will use cached address (bleak_retry_connector "
-                    "path unavailable until device re-advertises)",
-                    self._config_entry.data.get(CONF_ADDRESS, "?"),
-                )
+            if fresh is None:
+                # The library only takes the bleak_retry_connector path for a
+                # BLEDevice; with the cached string address it falls back to a
+                # plain BleakClient.connect().  That bypasses the retry logic
+                # and re-hammers the proxy on every poll for as long as the
+                # device stays invisible.  Nothing is reachable anyway, so wait
+                # for the next advertisement instead.
+                self._on_unreachable("not advertising to any connectable adapter")
+                return False
+            self._hiflow.address = fresh
             try:
                 await self._hiflow._ensure_connected()  # serialised by _connect_lock
             except BleLinkError as err:
